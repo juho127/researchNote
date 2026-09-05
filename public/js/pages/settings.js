@@ -16,7 +16,7 @@ export async function render(container) {
   const desktopCfg = JSON.stringify({ mcpServers: { "research-note": { command: "npx", args: ["-y", "mcp-remote", mcpUrl, "--header", `Authorization: Bearer ${token}`] } } }, null, 2);
   const codexCfg = `[mcp_servers.research-note]\nurl = "${mcpUrl}"\nhttp_headers = { Authorization = "Bearer ${token}" }`;
   const geminiCfg = JSON.stringify({ mcpServers: { "research-note": { httpUrl: mcpUrl, headers: { Authorization: `Bearer ${token}` } } } }, null, 2);
-  const pluginCmd = `# 환경변수 설정 후 (PowerShell: $env:RESEARCH_NOTE_URL / bash: export)\nRESEARCH_NOTE_URL=${origin}\nRESEARCH_NOTE_TOKEN=${token}\n\n# Claude Code 안에서\n/plugin marketplace add juho127/researhNote\n/plugin install research-note@research-note`;
+  const pluginCmd = `# 환경변수 설정 후 (PowerShell: $env:RESEARCH_NOTE_URL / bash: export)\nRESEARCH_NOTE_URL=${origin}\nRESEARCH_NOTE_TOKEN=${token}\n\n# Claude Code 안에서\n/plugin marketplace add juho127/researchNote\n/plugin install research-note@research-note`;
 
   const snippets = [];
   const snippet = (title, code, desc) => {

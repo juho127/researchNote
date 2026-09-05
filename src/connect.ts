@@ -77,7 +77,7 @@ ${cats}
 MCP 서버가 \`initialize\` 응답으로 사용 원칙을 주므로 필수는 아니지만, 더 정교한 기록 절차와 슬래시 커맨드를 원하면 둘 중 하나:
 - 스킬 파일만: \`mkdir -p ~/.claude/skills/research-note && curl -s ${base}/SKILL.md -o ~/.claude/skills/research-note/SKILL.md\`
   (프로젝트 한정이면 \`.claude/skills/research-note/SKILL.md\`)
-- 플러그인(스킬 + \`/research-note:log\` \`:status\` \`:review\` \`:report\`): 환경변수 \`RESEARCH_NOTE_URL=${base}\`, \`RESEARCH_NOTE_TOKEN=<토큰>\` 설정 후 Claude Code 안에서 \`/plugin marketplace add juho127/researhNote\` → \`/plugin install research-note@research-note\`
+- 플러그인(스킬 + \`/research-note:log\` \`:status\` \`:review\` \`:report\`): 환경변수 \`RESEARCH_NOTE_URL=${base}\`, \`RESEARCH_NOTE_TOKEN=<토큰>\` 설정 후 Claude Code 안에서 \`/plugin marketplace add juho127/researchNote\` → \`/plugin install research-note@research-note\`
 
 ## 4. 프로젝트 메모 (선택)
 

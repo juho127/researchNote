@@ -68,7 +68,7 @@ Cursor / Codex ───┘     ├─ /            SPA (정적)
 사전 준비: Node.js 20+, [Cloudflare 계정](https://dash.cloudflare.com/sign-up) (무료 플랜으로 충분), `git`.
 
 ```bash
-git clone https://github.com/juho127/researhNote.git research-note
+git clone https://github.com/juho127/researchNote.git research-note
 cd research-note
 npm install
 npx wrangler login          # 브라우저에서 Cloudflare 로그인 (또는 CLOUDFLARE_API_TOKEN 환경변수)
@@ -133,7 +133,7 @@ claude mcp add --transport http research-note https://<배포URL>/mcp --header "
 export RESEARCH_NOTE_URL=https://<배포URL>
 export RESEARCH_NOTE_TOKEN=rn_xxx
 # claude 안에서
-/plugin marketplace add juho127/researhNote
+/plugin marketplace add juho127/researchNote
 /plugin install research-note@research-note
 ```
 

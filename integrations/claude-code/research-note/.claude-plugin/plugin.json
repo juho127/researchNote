@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "description": "연구노트(Research Note) 연동: 원격 MCP 서버 등록 + 기록 스킬 + 슬래시 커맨드. 환경변수 RESEARCH_NOTE_URL, RESEARCH_NOTE_TOKEN 필요.",
   "author": { "name": "juho127" },
-  "homepage": "https://github.com/juho127/researhNote",
+  "homepage": "https://github.com/juho127/researchNote",
   "keywords": ["research", "mcp", "lab-notebook"],
   "mcpServers": "./.mcp.json"
 }

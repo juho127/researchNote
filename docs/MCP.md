@@ -34,7 +34,7 @@ export RESEARCH_NOTE_URL=https://<URL>
 export RESEARCH_NOTE_TOKEN=rn_xxx
 ```
 ```
-/plugin marketplace add juho127/researhNote
+/plugin marketplace add juho127/researchNote
 /plugin install research-note@research-note
 ```
 
