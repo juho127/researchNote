@@ -17,7 +17,7 @@ export function shell(cfg, ...content) {
   return h("div",
     h("div.topbar", h("div.inner", h("div.mark", a.mark || "RN"), h("div.who", h("b", a.org || a.name), h("span", a.org_sub || "")), h("a.doc", { href: "#/" }, a.name || "연구노트"),
       h("nav.nav", h("a", { href: "#/login" }, "로그인"), h("a", { href: "#/apply" }, "발급 신청"), h("a", { href: "#/connect" }, "AI 연동")))),
-    h("div.wrap.narrow", ...content, h("div.foot", `${a.org || ""} ${a.org_sub ? "· " + a.org_sub : ""} · ${a.name || ""}`)),
+    h("div.wrap.narrow", ...content, h("div.foot", `${a.org || ""} ${a.org_sub ? "· " + a.org_sub : ""} · ${a.name || ""}`, " · ", h("a", { href: "https://hufs-ai-lecture.pages.dev/", target: "_blank", rel: "noopener" }, "강의 홈 ↗"))),
   );
 }
 

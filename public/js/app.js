@@ -44,7 +44,7 @@ function layout(content, active) {
     h("a.doc", { href: "#/" }, a.name),
     nav,
   ));
-  mount(app, top, content, h("div.foot", `${a.org || ""} ${a.org_sub ? "· " + a.org_sub : ""} · ${a.name}`, " · ", h("a", { href: "/SKILL.md", target: "_blank" }, "AI 연동 지침"), " · ", h("a", { href: "https://github.com/juho127/researchNote", target: "_blank", rel: "noopener" }, "GitHub")));
+  mount(app, top, content, h("div.foot", `${a.org || ""} ${a.org_sub ? "· " + a.org_sub : ""} · ${a.name}`, " · ", h("a", { href: "https://hufs-ai-lecture.pages.dev/", target: "_blank", rel: "noopener" }, "강의 홈 ↗"), " · ", h("a", { href: "/SKILL.md", target: "_blank" }, "AI 연동 지침"), " · ", h("a", { href: "https://github.com/juho127/researchNote", target: "_blank", rel: "noopener" }, "GitHub")));
 }
 
 async function render() {
