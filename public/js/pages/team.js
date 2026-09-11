@@ -15,12 +15,12 @@ export async function render(container, categoryId, query) {
   }
 
   const header = h("header.hero", { style: { padding: "22px 0 18px" } },
-    h("div.eyebrow", `팀 · ${detail.category.track === "capstone" ? "캡스톤 트랙" : "논문 트랙"} · 내 역할: ${detail.my_role === "admin" ? "관리자" : detail.my_role === "lead" ? "리드" : detail.my_role === "evaluator" ? "평가자" : "구성원"}`),
+    h("div.eyebrow", `팀 · ${detail.category.track === "capstone" ? "캡스톤 트랙" : "논문 트랙"} · 내 역할: ${detail.my_role === "admin" ? "관리자" : detail.my_role === "lead" ? "리드" : detail.my_role === "evaluator" ? "평가자" : detail.my_role === "viewer" ? "열람자 (읽기 전용)" : "구성원"}`, cat.is_public ? [" · ", pill(cat.pin_set ? "공개 열람 · 핀" : "공개 (핀 미설정)", "ok sm")] : null),
     h("div.row.between.top",
       h("div", h("h1", cat.name), cat.description ? h("p.sub", cat.description) : null),
       h("div.row",
         h("button.btn", { onclick: () => reportDialog(categoryId, cat.name) }, "팀 보고서"),
-        detail.my_role !== "evaluator" ? h("button.btn.primary", { onclick: () => newProjectDialog(me, categoryId, cat.name) }, "+ 새 프로젝트") : null,
+        detail.my_role !== "evaluator" && detail.my_role !== "viewer" ? h("button.btn.primary", { onclick: () => newProjectDialog(me, categoryId, cat.name) }, "+ 새 프로젝트") : null,
       ),
     ),
     h("div.row", { style: { marginTop: "14px" } }, viewSeg, h("span.spacer"),
@@ -87,7 +87,9 @@ function renderMembers(detail, categoryId, container, query) {
           ? h("div.stack", { style: { marginTop: "10px" } }, jr.map((r) => h("div.row", { style: { padding: "8px 0", borderTop: "1px solid var(--rule)" } }, avatar(r.user_name), h("div", { style: { flex: 1 } }, h("b", r.user_name), r.user_email ? h("span.small.muted", ` · ${r.user_email}`) : null, h("div.small", r.message || h("span.muted", "(메시지 없음)")), h("div.tiny.muted", fmtDT(r.created_at))),
               h("button.btn.sm.primary", { onclick: () => decide(r, true, categoryId, container, query) }, "승인"), h("button.btn.sm.danger", { onclick: () => decide(r, false, categoryId, container, query) }, "거절"))))
           : h("p.small.muted", { style: { margin: "6px 0 0" } }, "대기 중인 가입 요청이 없습니다. 팀원은 [팀 로비]에서 가입을 요청합니다."))
-    : h("p.small.muted", { style: { marginBottom: "12px" } }, `가입 정책: ${POLICY_LABEL[detail.category.join_policy] || detail.category.join_policy} · 다른 팀은 [팀 로비]에서 찾을 수 있습니다.`);
+    : detail.my_role === "viewer"
+      ? h("p.small.muted", { style: { marginBottom: "12px" } }, "열람 모드에서는 구성원 목록만 볼 수 있습니다. 팀에 참여하려면 개인 토큰을 발급받아 로비에서 가입하세요.")
+      : h("p.small.muted", { style: { marginBottom: "12px" } }, `가입 정책: ${POLICY_LABEL[detail.category.join_policy] || detail.category.join_policy} · 다른 팀은 [팀 로비]에서 찾을 수 있습니다.`);
   const grid = h("div.grid.c3");
   for (const m of detail.members) {
     const mine = detail.projects.filter((p) => p.owner_id === m.id && p.status !== "archived");

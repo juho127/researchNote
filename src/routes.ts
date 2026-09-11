@@ -1,5 +1,5 @@
 import type { AuthContext, Env } from "./env";
-import { authenticate, requireAdmin } from "./lib/auth";
+import { authenticate, requireAdmin, requireWriter } from "./lib/auth";
 import { HttpError, json, text, html, readJson, notFound } from "./lib/http";
 import * as P from "./services/projects";
 import * as E from "./services/entries";
@@ -10,6 +10,7 @@ import * as R from "./services/report";
 import * as S from "./services/signup";
 import * as TM from "./services/teams";
 import * as EV from "./services/evaluations";
+import * as PV from "./services/publicview";
 
 type Handler = (req: Request, env: Env, ctx: AuthContext, params: Record<string, string>, url: URL) => Promise<Response>;
 
@@ -50,6 +51,9 @@ addPublic("GET", "/api/public/config", async (_r, env) => json(await S.publicCon
 addPublic("POST", "/api/public/requests", async (req, env) => json(await S.createRequest(env, await readJson(req, 16 * 1024)), 201));
 addPublic("GET", "/api/public/requests/:claim", async (_r, env, p) => json(await S.requestStatus(env, p.claim)));
 addPublic("POST", "/api/public/requests/:claim/claim", async (_r, env, p) => json(await S.claimToken(env, p.claim)));
+// 공개 카테고리 핀 열람: 팀 목록 → 핀 입력 → 열람 토큰(rnv_, 24시간, 읽기 전용)
+addPublic("GET", "/api/public/teams", async (_r, env) => json(await PV.listPublicTeams(env)));
+addPublic("POST", "/api/public/teams/:id/pin", async (req, env, p) => json(await PV.pinLogin(env, req, p.id, await readJson(req, 4 * 1024))));
 
 type ReportResult = { type: "json"; data: unknown } | { type: "md"; text: string; title?: string } | { type: "html"; html: string; title?: string };
 
@@ -203,6 +207,12 @@ add("POST", "/api/admin/tokens/:id/revoke", admin(async (_r, env, ctx, p) => {
   await A.revokeToken(env, ctx, p.id);
   return json({ ok: true });
 }));
+// 카테고리의 핀 열람 세션 전부 만료 (핀은 유지)
+add("POST", "/api/admin/categories/:id/viewers/revoke", admin(async (_r, env, ctx, p) => {
+  const n = await PV.revokeViewerSessions(env, p.id);
+  await A.updateCategoryNote(env, ctx, p.id, `열람 세션 ${n}건 강제 만료`);
+  return json({ ok: true, revoked: n });
+}));
 
 add("GET", "/api/admin/requests", admin(async (_r, env, _c, _p, url) => json(await S.listRequests(env, q(url, "status") || "pending"))));
 add("POST", "/api/admin/requests/:id/approve", admin(async (req, env, ctx, p) => json(await S.approveRequest(env, ctx, p.id, await readJson(req)))));
@@ -249,6 +259,8 @@ export async function handleApi(request: Request, env: Env): Promise<Response> {
     try {
       // source: 'mcp' 는 /mcp 엔드포인트에서만 부여 (REST 는 web | api)
       const ctx = await authenticate(request, env, request.headers.get("x-client") === "web" ? "web" : "api");
+      // 핀 열람 세션은 읽기 전용: GET 이외의 모든 요청을 서버에서 거부한다 (버튼 숨김에 의존하지 않음)
+      if (ctx.viewer && method !== "GET") requireWriter(ctx);
       return await r.handler(request, env, ctx, params, url);
     } catch (err) {
       return errorResponse(err);

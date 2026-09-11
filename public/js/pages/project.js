@@ -186,7 +186,7 @@ function entryCard(e, container) {
       p.can_review && e.review_status !== "approved" ? h("button.btn.xs.mint", { onclick: () => reviewDialog(e, "approved", container) }, "승인") : null,
       p.can_review && e.review_status !== "changes_requested" ? h("button.btn.xs", { onclick: () => reviewDialog(e, "changes_requested", container) }, "수정 요청") : null,
       h("span.spacer"),
-      h("button.btn.ghost.xs", { onclick: () => toggleComments(e, comments) }, e.comment_count ? `코멘트 ${e.comment_count}` : "코멘트"),
+      (me.viewer && !e.comment_count) ? null : h("button.btn.ghost.xs", { onclick: () => toggleComments(e, comments) }, e.comment_count ? `코멘트 ${e.comment_count}` : "코멘트"),
     ),
     comments,
   );
@@ -213,7 +213,7 @@ async function loadComments(e, box) {
     btn.disabled = true;
     try { await post(`/api/entries/${e.id}/comments`, { content: ta.value }); e.comment_count = (e.comment_count || 0) + 1; await loadComments(e, box); } catch (ex) { errToast(ex); btn.disabled = false; }
   } }, "남기기");
-  mount(box, list.length ? list : h("div.small.muted", "아직 코멘트가 없습니다"), h("div.cmt-form", ta, btn));
+  mount(box, list.length ? list : h("div.small.muted", "아직 코멘트가 없습니다"), me.viewer ? h("div.tiny.muted", { style: { marginTop: "6px" } }, "열람 모드에서는 코멘트를 남길 수 없습니다") : h("div.cmt-form", ta, btn));
 }
 
 async function setReview(e, status, container) {
@@ -334,18 +334,19 @@ async function renderTasks(body, container) {
     try { await post(`/api/projects/${p.id}/tasks`, { title: title.value.trim(), due: due.value || null, assignee_id: assignee.value || null }); title.value = ""; toast("추가했습니다"); reload(container); } catch (ex) { errToast(ex); }
   } }, "추가");
   title.addEventListener("keydown", (ev) => { if (ev.key === "Enter") add.click(); });
-  const form = h("div.card.pad-s", h("div.row", h("div", { style: { flex: 1, minWidth: "220px" } }, title), due, assignee, add));
+  const ro = !!me.viewer; // 열람 모드: 할 일 조회만
+  const form = ro ? h("p.small.muted", { style: { margin: 0 } }, "열람 모드에서는 할 일을 추가·변경할 수 없습니다.") : h("div.card.pad-s", h("div.row", h("div", { style: { flex: 1, minWidth: "220px" } }, title), due, assignee, add));
   const list = h("div.card");
   const todayStr = today();
   if (!tasks.length) list.append(h("div.small.muted", "할 일이 없습니다"));
   for (const t of tasks) {
-    const cb = h("input", { type: "checkbox", checked: t.status === "done", onchange: async () => { try { await patch(`/api/tasks/${t.id}`, { status: cb.checked ? "done" : "todo" }); reload(container); } catch (ex) { errToast(ex); cb.checked = !cb.checked; } } });
+    const cb = h("input", { type: "checkbox", checked: t.status === "done", disabled: ro, onchange: async () => { try { await patch(`/api/tasks/${t.id}`, { status: cb.checked ? "done" : "todo" }); reload(container); } catch (ex) { errToast(ex); cb.checked = !cb.checked; } } });
     const over = t.due && t.status !== "done" && t.due < todayStr;
     list.append(h("div.task." + t.status, cb,
       h("div", { style: { flex: 1 } }, h("div.t-t", t.title), h("div.t-m", t.assignee_name ? h("span", "@" + t.assignee_name) : null, t.due ? h("span.due" + (over ? ".over" : ""), `기한 ${t.due}${over ? " (지남)" : ""}`) : null, t.stage ? pill(stageLabel(t.stage), "sm") : null, t.status === "doing" ? pill("진행 중", "warn sm") : null)),
-      t.status !== "done" ? h("button.btn.xs", { onclick: async () => { await patch(`/api/tasks/${t.id}`, { status: t.status === "doing" ? "todo" : "doing" }); reload(container); } }, t.status === "doing" ? "대기로" : "진행 중") : null,
-      h("button.btn.ghost.xs", { onclick: () => taskEditor(t, p, container) }, "수정"),
-      (p.can_edit || t.created_by === me.user.id) ? h("button.btn.ghost.xs.danger", { onclick: async () => { if (await confirmDialog("할 일을 삭제할까요?", { danger: true, okLabel: "삭제" })) { await del(`/api/tasks/${t.id}`); reload(container); } } }, "삭제") : null,
+      !ro && t.status !== "done" ? h("button.btn.xs", { onclick: async () => { await patch(`/api/tasks/${t.id}`, { status: t.status === "doing" ? "todo" : "doing" }); reload(container); } }, t.status === "doing" ? "대기로" : "진행 중") : null,
+      ro ? null : h("button.btn.ghost.xs", { onclick: () => taskEditor(t, p, container) }, "수정"),
+      !ro && (p.can_edit || t.created_by === me.user.id) ? h("button.btn.ghost.xs.danger", { onclick: async () => { if (await confirmDialog("할 일을 삭제할까요?", { danger: true, okLabel: "삭제" })) { await del(`/api/tasks/${t.id}`); reload(container); } } }, "삭제") : null,
     ));
   }
   mount(body, h("div.stack", form, list));
@@ -376,7 +377,7 @@ function renderMembers(body, container) {
       boxes.length ? h("div.grid.c3", boxes.map((b) => h("label.check", b.cb, avatar(b.m.name), b.m.name, b.m.role === "lead" ? pill("리드", "gold sm") : null))) : h("div.small.muted", "추가할 수 있는 팀원이 없습니다 (같은 카테고리 구성원만)")),
     h("div.section", h("div.section-h", h("h2", "카테고리 구성원")),
       h("div.grid.c3", p.members.map((m) => h("div.card.pad-s", h("div.row", avatar(m.name), h("b", m.name), m.role === "lead" ? pill("리드", "gold sm") : m.role === "evaluator" ? pill("평가자", "ai sm") : null, m.id === p.owner_id ? pill("담당", "navy sm") : collabIds.has(m.id) ? pill("협업자", "ok sm") : null))))),
-    h("p.small.muted", { style: { marginTop: "12px" } }, "같은 카테고리 구성원은 이 프로젝트의 기록을 읽고 코멘트할 수 있습니다. 기록 작성은 담당자·협업자·리드·관리자, 승인/수정요청은 리드·관리자, 평가는 리드·평가자·관리자."),
+    h("p.small.muted", { style: { marginTop: "12px" } }, me.viewer ? "열람 모드(핀)에서는 구성원·협업자를 볼 수만 있습니다." : "같은 카테고리 구성원은 이 프로젝트의 기록을 읽고 코멘트할 수 있습니다. 기록 작성은 담당자·협업자·리드·관리자, 승인/수정요청은 리드·관리자, 평가는 리드·평가자·관리자."),
   );
 }
 

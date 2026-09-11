@@ -18,6 +18,12 @@
 | POST | `/api/public/requests` | `{name*, email, category_id, note, signup_code?}` → 201 `{id, claim_code(1회 표시), status}` |
 | GET | `/api/public/requests/:claim_code` | `{status: pending|approved|rejected, claimed, decision_note, ...}` |
 | POST | `/api/public/requests/:claim_code/claim` | 승인된 신청의 토큰 1회 수령 → `{token, user_id, name}` (409: 대기/거절/이미 수령) |
+| GET | `/api/public/teams` | 핀 열람이 가능한(공개 + 핀 설정) 팀 목록 `[{id, name, description, track, member_count, active_projects}]` |
+| POST | `/api/public/teams/:id/pin` | `{pin*, label?}` → `{viewer_token(rnv_…), expires_at, category}`. 401 핀 오류(남은 시도 표시), 429 5회 실패 후 10분 잠금(카테고리+IP), 404 비공개 |
+
+### 핀 열람 세션 (읽기 전용)
+
+`rnv_` 토큰은 `Authorization: Bearer` 로 `rn_` 토큰과 똑같이 쓰되 **해당 카테고리에 한해 GET 만** 허용됩니다 (다른 메서드는 403 `forbidden`). 24시간 뒤 만료(401). 관리자가 핀을 바꾸거나 공개를 끄면 즉시 무효. `/api/me` 에 `viewer: {category_id, category_name, expires_at}` 가 실립니다. MCP 에서도 조회 도구(`whoami, list_projects, get_project, list_entries, get_entry, list_tasks, list_evaluations, team_feed, team_overview, list_teams, search, get_report`)만 동작합니다. 구성원 이메일·가입 요청·초안 평가는 보이지 않습니다.
 
 ## 공통
 
@@ -102,8 +108,9 @@
 | GET | `/api/admin/overview` | `counts, by_stage, by_category[], per_user[], daily_activity[], review_queue[], deadlines[]` |
 | GET | `/api/admin/activity?category_id=&actor_id=&limit=&before=` | 활동 로그 |
 | GET | `/api/admin/categories?all=1` | 보관 포함 |
-| POST | `/api/admin/categories` | `{name*, description, color, id, join_policy: open|approval|closed, track: paper|capstone}` |
-| PATCH | `/api/admin/categories/:id` | `{name, description, color, archived: bool, join_policy, track(프로젝트가 없을 때만)}` |
+| POST | `/api/admin/categories` | `{name*, description, color, id, join_policy: open|approval|closed, track: paper|capstone, is_public: bool, pin: "영문·숫자 4~12자"}` |
+| PATCH | `/api/admin/categories/:id` | `{name, description, color, archived: bool, join_policy, track(프로젝트가 없을 때만), is_public: bool, pin: 새 핀 \| ""(해제)}`. 핀 변경·해제·공개 해제·보관 시 열람 세션 전부 만료. 응답에 `pin_set`, `pin_updated_at`, `active_viewers` (핀·해시는 절대 반환하지 않음) |
+| POST | `/api/admin/categories/:id/viewers/revoke` | 현재 열람 세션 전부 만료 (핀 유지) → `{revoked}` |
 | GET | `/api/admin/users` | 사용자 + `memberships[], token_count, active_tokens, project_count, entry_count, last_entry_at` |
 | POST | `/api/admin/users` | `{name*, id, email, role: admin|member, note, categories: ["cat"] | [{category_id, role: lead|member}], issue_token: bool}` → `{user, token?, token_hint?}` |
 | PATCH | `/api/admin/users/:id` | `{name, email, role, note, disabled: bool, categories(전체 교체)}` |

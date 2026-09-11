@@ -31,15 +31,26 @@ export interface User {
 export interface Membership {
   category_id: string;
   category_name: string;
-  role: CategoryRole;
+  /** viewer = 핀 열람 세션(읽기 전용, 구성원 아님) */
+  role: CategoryRole | "viewer";
+}
+
+/** 핀 열람 세션 (공개 카테고리를 토큰 없이 읽기 전용으로 보는 접근) */
+export interface ViewerInfo {
+  session_id: string;
+  category_id: string;
+  category_name: string;
+  expires_at: string;
 }
 
 export interface AuthContext {
   user: User;
   memberships: Membership[];
-  tokenId: string | null; // null = ADMIN_TOKEN 부트스트랩
+  tokenId: string | null; // null = ADMIN_TOKEN 부트스트랩 또는 열람 세션
   isAdmin: boolean;
   source: "web" | "mcp" | "api";
+  /** 설정되어 있으면 읽기 전용 열람 모드 (쓰기 API·도구 전부 거부) */
+  viewer?: ViewerInfo;
 }
 
 // ---------- 트랙 (카테고리 유형) 과 단계 ----------

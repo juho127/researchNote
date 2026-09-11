@@ -14,13 +14,15 @@ export interface LobbyTeam {
   description: string;
   join_policy: JoinPolicy;
   track: string;
+  /** 공개 열람(핀) 허용 여부 */
+  is_public: number;
   member_count: number;
   lead_names: string | null;
   member_names: string | null;
   active_projects: number;
   entries_7d: number;
   last_activity_at: string | null;
-  my_role: "admin" | "lead" | "member" | "evaluator" | null;
+  my_role: "admin" | "lead" | "member" | "evaluator" | "viewer" | null;
   /** 실제 구성원 행의 역할 (관리자는 접근 권한과 별개로 구성원 목록에 올라 있는지 구분) */
   my_membership: "lead" | "member" | "evaluator" | null;
   my_request_status: "pending" | "rejected" | null;
@@ -31,7 +33,7 @@ export interface LobbyTeam {
 export async function lobby(env: Env, ctx: AuthContext): Promise<LobbyTeam[]> {
   const rs = await env.DB
     .prepare(
-      `SELECT c.id, c.name, c.description, c.join_policy, c.track,
+      `SELECT c.id, c.name, c.description, c.join_policy, c.track, (c.is_public = 1 AND c.pin_hash IS NOT NULL) AS is_public,
          (SELECT COUNT(*) FROM memberships m JOIN users u ON u.id = m.user_id WHERE m.category_id = c.id AND u.disabled_at IS NULL) AS member_count,
          (SELECT GROUP_CONCAT(u.name, ', ') FROM memberships m JOIN users u ON u.id = m.user_id WHERE m.category_id = c.id AND m.role = 'lead' AND u.disabled_at IS NULL) AS lead_names,
          (SELECT GROUP_CONCAT(u.name, ', ') FROM memberships m JOIN users u ON u.id = m.user_id WHERE m.category_id = c.id AND u.disabled_at IS NULL) AS member_names,
@@ -44,7 +46,10 @@ export async function lobby(env: Env, ctx: AuthContext): Promise<LobbyTeam[]> {
     )
     .bind(daysAgoIso(7), ctx.user.id, ctx.user.id)
     .all<LobbyTeam>();
-  return (rs.results ?? []).map((t) => ({ ...t, my_role: categoryRole(ctx, t.id), my_membership: ctx.memberships.find((m) => m.category_id === t.id)?.role ?? null }));
+  return (rs.results ?? [])
+    // 핀 열람자는 다른 팀의 존재를 알 필요가 없다
+    .filter((t) => !ctx.viewer || t.id === ctx.viewer.category_id)
+    .map((t) => ({ ...t, my_role: categoryRole(ctx, t.id), my_membership: (ctx.memberships.find((m) => m.category_id === t.id)?.role as LobbyTeam["my_membership"]) ?? null }));
 }
 
 /** 가입 (정책에 따라 즉시 가입 또는 요청 생성). 관리자는 항상 즉시 가입하며 role(기본 lead)을 고를 수 있다 */

@@ -15,7 +15,9 @@ categories 1 ──< memberships >── 1 users 1 ──< tokens
 
 | 테이블 | 핵심 컬럼 | 비고 |
 |---|---|---|
-| `categories` | `id`(slug), `name` UNIQUE, `description`, `track` paper\|capstone, `join_policy` open\|approval\|closed, `archived_at` | 연구 그룹/팀. 트랙이 단계·루브릭을 결정. 보관 시 구성원 접근 차단 |
+| `categories` | `id`(slug), `name` UNIQUE, `description`, `track` paper\|capstone, `join_policy` open\|approval\|closed, `is_public`, `pin_hash`(SHA-256(id:pin)), `pin_updated_at`, `archived_at` | 연구 그룹/팀. 트랙이 단계·루브릭을 결정. 보관 시 구성원 접근 차단. 공개+핀이면 핀 열람 가능 |
+| `viewer_sessions` | `category_id`, `token_hash`(rnv_ 토큰 해시), `hint`, `label`, `ip`, `expires_at`(24h), `last_used_at` | 핀 열람 세션(읽기 전용). 핀 변경·공개 해제·보관 시 삭제 |
+| `pin_attempts` | (`category_id`,`ip`) PK, `fails`, `locked_until` | 핀 무차별 대입 방지 (5회 → 10분 잠금) |
 | `project_collaborators` | (`project_id`,`user_id`) PK | 담당자와 같은 편집 권한 (캡스톤 팀원·공저자) |
 | `evaluations` | `project_id`, `stage`, `evaluator_id`, `title`, `scores`(JSON {축: 점수}), `total`, `feedback`(md), `response`(md), `response_by`, `visible` | 마일스톤별 평가자 채점·피드백 + 팀 답변. 평가자 여러 명 가능 |
 | `join_requests` | `user_id`, `category_id`, `message`, `status` pending\|approved\|rejected\|cancelled | 로비 가입 요청 |
@@ -32,7 +34,7 @@ categories 1 ──< memberships >── 1 users 1 ──< tokens
 
 ## 활동 action 목록
 
-`project.create|update|archive`, `entry.create|update|delete`, `stage.update`, `comment.create`, `review.request|approve|changes|clear`, `task.create|update|delete`, `category.create|update`, `user.create|update`, `membership.set|remove`, `token.issue|revoke`
+`project.create|update|archive`, `entry.create|update|delete`, `stage.update|advance`, `comment.create`, `review.request|approve|changes|clear`, `task.create|update|delete`, `category.create|update`, `user.create|update`, `membership.set|remove`, `token.issue|revoke`, `signup.request|approve|reject|claim`, `team.join|join_request|join_approve|join_reject|leave`, `evaluation.create|update|delete|respond`, `viewer.login`
 
 ## ID 규칙
 

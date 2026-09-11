@@ -5,7 +5,7 @@
 **가장 쉬운 방법**: AI 도구에 `https://<URL>/connect 를 읽고 연구노트를 연동해줘` 라고 말하세요. `/connect` 는 에이전트용 안내(markdown)로, 토큰 확인 → 발급 신청/수령 → MCP 등록 → 스킬 저장 → 검증 절차와 정확한 명령이 들어 있습니다.
 
 - Endpoint: `POST https://<배포URL>/mcp`
-- 인증: `Authorization: Bearer rn_...` (개인 토큰, 웹 로그인과 동일)
+- 인증: `Authorization: Bearer rn_...` (개인 토큰, 웹 로그인과 동일). 핀 열람 토큰(`rnv_...`, `/#/view` 에서 발급)도 쓸 수 있으나 **조회 도구만** 동작하고 쓰기 도구는 `isError` 로 거부됩니다
 - 프로토콜: MCP `2025-06-18` / `2025-03-26` / `2024-11-05` (JSON-RPC 2.0, 단건·배치, 알림은 202)
 - 세션 없음(stateless). `GET /mcp` 는 안내 JSON, SSE 스트림은 미지원(405).
 - 기능: `tools`, `prompts`, `resources`, `logging`. `initialize` 응답의 `instructions` 에 사용 원칙 포함.

@@ -20,6 +20,7 @@ export async function connectMarkdown(env: Env, base: string): Promise<string> {
 - MCP 엔드포인트: \`${mcp}\` (Streamable HTTP, 인증 헤더 \`Authorization: Bearer <토큰>\`)
 - 사용 지침(스킬): \`${base}/SKILL.md\`
 - 공개 API 는 인증 없이, 그 외 \`/api/*\` 와 \`/mcp\` 는 개인 토큰(\`rn_\` 로 시작)이 필요하다.
+- 읽기만 필요한 외부 심사위원 등은 핀 열람 토큰(\`rnv_\`, \`${base}/#/view\` 에서 핀 입력 → 24시간)을 같은 방식으로 등록할 수 있다. 이 경우 조회 도구만 동작한다.
 
 ## 0. 이미 연결됐는지 확인
 

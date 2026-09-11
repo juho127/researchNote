@@ -13,10 +13,13 @@ export function setToken(t) {
   try { t ? localStorage.setItem(TOKEN_KEY, t) : localStorage.removeItem(TOKEN_KEY); } catch {}
 }
 export function logout() {
+  const wasViewer = isViewerToken();
   setToken(null);
   state.me = null;
-  location.hash = "#/login";
+  location.hash = wasViewer ? "#/view" : "#/login";
 }
+/** 핀 열람 세션 토큰(rnv_)인지 */
+export function isViewerToken() { const t = getToken(); return !!t && t.startsWith("rnv_"); }
 
 export class ApiError extends Error {
   constructor(status, code, message) { super(message); this.status = status; this.code = code; }
@@ -33,8 +36,10 @@ export async function api(method, path, body, opts = {}) {
   const data = ct.includes("application/json") ? await r.json() : await r.text();
   if (!r.ok) {
     if (r.status === 401 && !opts.noRedirect) {
+      const viewer = isViewerToken();
       setToken(null); state.me = null;
-      if (location.hash !== "#/login") location.hash = "#/login";
+      if (viewer) { if (!location.hash.startsWith("#/view")) location.hash = "#/view?expired=1"; }
+      else if (location.hash !== "#/login") location.hash = "#/login";
     }
     throw new ApiError(r.status, data?.error || "error", data?.message || (typeof data === "string" ? data.slice(0, 200) : `HTTP ${r.status}`));
   }
@@ -144,6 +149,7 @@ export const ACTION_LABEL = {
   "signup.request": "발급 신청", "signup.approve": "신청 승인", "signup.reject": "신청 거절", "signup.claim": "토큰 수령",
   "team.join": "팀 가입", "team.join_request": "팀 가입 요청", "team.join_approve": "가입 승인", "team.join_reject": "가입 거절", "team.leave": "팀 탈퇴",
   "evaluation.create": "평가 작성", "evaluation.update": "평가 수정", "evaluation.delete": "평가 삭제", "evaluation.respond": "평가 답변",
+  "viewer.login": "핀 열람 시작",
 };
 /** 트랙 정의 {paper:{label,noun,stages[],rubric[]}, capstone:{...}} */
 export function tracks() { return state.me?.tracks || {}; }
@@ -159,7 +165,7 @@ export function stageLabel(id) { return allStageMap()[id]?.label || (state.me?.s
 export function stageHint(id) { return allStageMap()[id]?.hint || ""; }
 export function stageMilestone(id) { return allStageMap()[id]?.milestone || ""; }
 export function stageIndex(id, trackId) { const list = trackId ? stages(trackId) : stages(allStageMap()[id]?.track); return list.findIndex((s) => s.id === id); }
-export const ROLE_LABEL = { admin: "관리자", lead: "리드", member: "구성원", evaluator: "평가자" };
+export const ROLE_LABEL = { admin: "관리자", lead: "리드", member: "구성원", evaluator: "평가자", viewer: "열람자" };
 
 export function pill(text, cls = "") { return h("span.pill" + (cls ? "." + cls.split(" ").join(".") : ""), text); }
 export function avatar(name, lg = false) { return h("span.avatar" + (lg ? ".lg" : ""), { title: name }, initials(name)); }

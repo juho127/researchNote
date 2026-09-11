@@ -1,4 +1,4 @@
-import { state, getToken, loadMe, logout, h, mount, parseRoute, errToast, get } from "./core.js";
+import { state, getToken, loadMe, logout, h, mount, parseRoute, errToast, get, fmtDT, pill } from "./core.js";
 import * as Login from "./pages/login.js";
 import * as Home from "./pages/home.js";
 import * as Team from "./pages/team.js";
@@ -7,6 +7,7 @@ import * as Admin from "./pages/admin.js";
 import * as Settings from "./pages/settings.js";
 import * as Public from "./pages/apply.js";
 import * as Lobby from "./pages/lobby.js";
+import * as View from "./pages/view.js";
 
 const app = document.getElementById("app");
 let reviewCount = 0;
@@ -17,6 +18,17 @@ function layout(content, active) {
   const a = me?.app || { name: "연구노트", org: "", org_sub: "", mark: "RN" };
   const nav = h("nav.nav");
   const link = (href, label, key, badge) => nav.append(h("a", { href, class: active === key ? "active" : "" }, label, badge ? h("span.badge", badge) : null));
+  if (me?.viewer) {
+    // 핀 열람 모드: 해당 팀 하나만, 읽기 전용 표시
+    const v = me.viewer;
+    link(`#/team/${v.category_id}`, v.category_name, `team:${v.category_id}`);
+    nav.append(pill("열람 모드 · 읽기 전용", "gold sm"), h("a", { href: "#/view", onclick: (e) => { e.preventDefault(); logout(); } }, "나가기"));
+    nav.append(h("span.me", me.user?.name || "열람자"));
+    const top = h("div.topbar", h("div.inner", h("div.mark", a.mark || "RN"), h("div.who", h("b", a.org || a.name), h("span", a.org_sub || "")), h("a.doc", { href: `#/team/${v.category_id}` }, a.name), nav));
+    const banner = h("div.viewer-banner", h("div.inner", h("b", "🔒 열람 모드"), ` · ${v.category_name} 팀을 핀으로 보고 있습니다. 기록·코멘트·수정은 할 수 없습니다 · 세션 만료 ${fmtDT(v.expires_at)}`, h("span.spacer"), h("a", { href: "#/login", onclick: (e) => { e.preventDefault(); logout(); location.hash = "#/login"; } }, "팀원 로그인")));
+    mount(app, top, banner, content, h("div.foot", `${a.org || ""} ${a.org_sub ? "· " + a.org_sub : ""} · ${a.name}`, " · ", h("a", { href: "https://hufs-ai-lecture.pages.dev/", target: "_blank", rel: "noopener" }, "강의 홈 ↗")));
+    return;
+  }
   link("#/", "홈", "home");
   const teams = me?.memberships || [];
   if (teams.length <= 2) {
@@ -52,12 +64,13 @@ async function render() {
   const [head, id] = route.parts;
 
   // 공개 페이지 (토큰 불필요)
-  if (head === "apply" || head === "claim" || head === "connect") {
+  if (head === "apply" || head === "claim" || head === "connect" || head === "view") {
     const c = h("div");
     mount(app, c);
     try {
       if (head === "apply") await Public.renderApply(c);
       else if (head === "claim") await Public.renderClaim(c, route.parts.slice(1).join("/") || "");
+      else if (head === "view") await View.renderView(c, route.parts[1] || "", route.query);
       else await Public.renderConnect(c);
     } catch (e) { mount(c, h("div.wrap.narrow", h("div.empty", `오류: ${e.message}`))); }
     window.scrollTo(0, 0);
@@ -77,6 +90,11 @@ async function render() {
     if (state.me.is_admin) get("/api/admin/overview").then((o) => { reviewCount = o.review_queue?.length || 0; pendingRequests = o.counts?.pending_requests || 0; }).catch(() => {});
   }
   if (head === "login") { location.hash = "#/"; return; }
+  if (state.me.viewer) {
+    // 열람 모드에서는 팀·프로젝트 페이지만. 나머지는 해당 팀으로
+    const vid = state.me.viewer.category_id;
+    if (!(head === "team" || head === "project")) { location.hash = `#/team/${vid}`; return; }
+  }
 
   const container = h("div.wrap");
   let active = "home";

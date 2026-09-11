@@ -41,6 +41,9 @@ interface ToolDef {
   handler: (env: Env, ctx: AuthContext, args: Record<string, unknown>) => Promise<{ text: string; data?: unknown }>;
 }
 
+/** 핀 열람 세션(읽기 전용)에서도 호출할 수 있는 도구. 나머지는 열람 모드에서 isError */
+const READONLY_TOOLS = new Set(["whoami", "list_projects", "get_project", "list_evaluations", "list_entries", "get_entry", "list_tasks", "team_feed", "team_overview", "list_teams", "search", "get_report"]);
+
 const stageEnum = {
   type: "string",
   enum: [...ALL_STAGE_IDS],
@@ -87,6 +90,7 @@ const TOOLS: ToolDef[] = [
     handler: async (env, ctx) => {
       const m = await F.me(env, ctx);
       const L = [`사용자: ${m.user.name} (${m.user.id})${m.is_admin ? " · 관리자" : ""}`, `오늘(${env.APP_TZ}): ${todayIn(env.APP_TZ)}`];
+      if (m.viewer) L.push(`⚠ 핀 열람 모드(읽기 전용): ${m.viewer.category_name} 팀만 조회 가능 · 만료 ${m.viewer.expires_at.slice(0, 16).replace("T", " ")}Z · 기록·수정 도구는 사용할 수 없다`);
       L.push(`소속 카테고리: ${m.memberships.length ? m.memberships.map((x) => `${x.category_name} (${x.category_id}, ${x.role})`).join(", ") : "없음"}`);
       L.push(`내 프로젝트 ${m.my_projects.length}건:`);
       for (const p of m.my_projects) L.push(`- ${p.title} (${p.id}) · ${STAGE_LABELS[p.stage]} · ${p.status} · 기록 ${p.entry_count}건 · 마지막 ${p.last_entry_date ?? "없음"}`);
@@ -571,7 +575,7 @@ async function handleOne(req: JsonRpcRequest, env: Env, ctx: AuthContext): Promi
             protocolVersion,
             capabilities: { tools: { listChanged: false }, prompts: { listChanged: false }, resources: { listChanged: false, subscribe: false }, logging: {} },
             serverInfo: { name: SERVER_NAME, title: env.APP_NAME, version: SERVER_VERSION },
-            instructions: SKILL_SHORT.replace("{{USER}}", ctx.user.name).replace("{{TODAY}}", todayIn(env.APP_TZ)),
+            instructions: (ctx.viewer ? `⚠ 이 토큰은 핀 열람 세션(읽기 전용)이다: ${ctx.viewer.category_name} 팀의 프로젝트·기록·평가를 조회만 할 수 있고 log_progress 등 쓰기 도구는 거부된다.\n\n` : "") + SKILL_SHORT.replace("{{USER}}", ctx.user.name).replace("{{TODAY}}", todayIn(env.APP_TZ)),
           },
         };
       }
@@ -593,6 +597,7 @@ async function handleOne(req: JsonRpcRequest, env: Env, ctx: AuthContext): Promi
         const args = (params.arguments && typeof params.arguments === "object" && !Array.isArray(params.arguments) ? params.arguments : {}) as Record<string, unknown>;
         const problems = validateArgs(tool.inputSchema, args);
         if (problems.length) return { jsonrpc: "2.0", id, result: { content: [{ type: "text", text: `인자 오류 (${tool.name}):\n- ${problems.join("\n- ")}` }], isError: true } };
+        if (ctx.viewer && !READONLY_TOOLS.has(tool.name)) return { jsonrpc: "2.0", id, result: { content: [{ type: "text", text: `오류: 핀 열람 모드(읽기 전용)에서는 ${tool.name} 을(를) 사용할 수 없습니다. 조회 도구(${[...READONLY_TOOLS].join(", ")})만 가능합니다` }], isError: true } };
         try {
           const r = await tool.handler(env, ctx, args);
           const result: Record<string, unknown> = { content: [{ type: "text", text: r.text }] };

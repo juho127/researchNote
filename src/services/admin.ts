@@ -4,6 +4,7 @@ import { bad, oneOf, str, bool, clampInt } from "../lib/http";
 import { newId, newToken, tokenHint, sha256Hex, slugify } from "../lib/id";
 import { nowIso, daysAgoIso, daysAgoDate } from "../lib/time";
 import { logActivity } from "../lib/db";
+import { normPin, pinHash, revokeViewerSessions } from "./publicview";
 
 // ---------- 카테고리 ----------
 
@@ -14,11 +15,23 @@ export interface CategoryRow {
   color: string;
   join_policy: string;
   track: string;
+  /** 공개 열람 허용 (핀이 설정되어야 실제로 열람 가능) */
+  is_public: number;
+  /** 핀 설정 여부 (핀 자체·해시는 절대 내려보내지 않음) */
+  pin_set: boolean;
+  pin_updated_at: string | null;
   created_at: string;
   archived_at: string | null;
   member_count?: number;
   project_count?: number;
   lead_names?: string;
+  active_viewers?: number;
+}
+
+/** DB 행 → API 행: pin_hash 제거, pin_set 추가 */
+export function shapeCategory<T extends { pin_hash?: string | null; is_public?: number }>(row: T): Omit<T, "pin_hash"> & { pin_set: boolean; is_public: number } {
+  const { pin_hash, ...rest } = row;
+  return { ...rest, is_public: row.is_public ? 1 : 0, pin_set: !!pin_hash };
 }
 
 export async function listCategories(env: Env, includeArchived = false): Promise<CategoryRow[]> {
@@ -27,16 +40,23 @@ export async function listCategories(env: Env, includeArchived = false): Promise
       `SELECT c.*,
          (SELECT COUNT(*) FROM memberships m JOIN users u ON u.id = m.user_id WHERE m.category_id = c.id AND u.disabled_at IS NULL) AS member_count,
          (SELECT COUNT(*) FROM projects p WHERE p.category_id = c.id AND p.status IN ('active','paused')) AS project_count,
-         (SELECT GROUP_CONCAT(u.name, ', ') FROM memberships m JOIN users u ON u.id = m.user_id WHERE m.category_id = c.id AND m.role = 'lead') AS lead_names
+         (SELECT GROUP_CONCAT(u.name, ', ') FROM memberships m JOIN users u ON u.id = m.user_id WHERE m.category_id = c.id AND m.role = 'lead') AS lead_names,
+         (SELECT COUNT(*) FROM viewer_sessions v WHERE v.category_id = c.id AND v.expires_at > ?) AS active_viewers
        FROM categories c ${includeArchived ? "" : "WHERE c.archived_at IS NULL"} ORDER BY c.archived_at IS NOT NULL, c.name`
     )
-    .all<CategoryRow>();
-  return rs.results ?? [];
+    .bind(nowIso())
+    .all<CategoryRow & { pin_hash: string | null }>();
+  return (rs.results ?? []).map((r) => shapeCategory(r) as CategoryRow);
+}
+
+async function loadCategory(env: Env, id: string): Promise<CategoryRow> {
+  const r = await env.DB.prepare(`SELECT * FROM categories WHERE id = ?`).bind(id).first<CategoryRow & { pin_hash: string | null }>();
+  return shapeCategory(r!) as CategoryRow;
 }
 
 const JOIN_POLICIES = ["open", "approval", "closed"] as const;
 
-export async function createCategory(env: Env, ctx: AuthContext, input: { name?: unknown; description?: unknown; color?: unknown; id?: unknown; join_policy?: unknown; track?: unknown }): Promise<CategoryRow> {
+export async function createCategory(env: Env, ctx: AuthContext, input: { name?: unknown; description?: unknown; color?: unknown; id?: unknown; join_policy?: unknown; track?: unknown; is_public?: unknown; pin?: unknown }): Promise<CategoryRow> {
   const name = str(input.name, 100);
   if (!name) bad("name 이 필요합니다");
   const dup = await env.DB.prepare(`SELECT id FROM categories WHERE name = ?`).bind(name).first();
@@ -51,19 +71,43 @@ export async function createCategory(env: Env, ctx: AuthContext, input: { name?:
     if (!isTrack(input.track)) bad(`track 값은 ${Object.keys(TRACKS).join(" | ")} 중 하나여야 합니다`);
     track = input.track;
   }
+  const isPublic = bool(input.is_public) ? 1 : 0;
+  const pin = normPin(input.pin);
   await env.DB
-    .prepare(`INSERT INTO categories (id, name, description, color, join_policy, track, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`)
-    .bind(id, name, str(input.description, 1000), str(input.color, 20), policy, track, at)
+    .prepare(`INSERT INTO categories (id, name, description, color, join_policy, track, is_public, pin_hash, pin_updated_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+    .bind(id, name, str(input.description, 1000), str(input.color, 20), policy, track, isPublic, pin ? await pinHash(id, pin) : null, pin ? at : null, at)
     .run();
   await logActivity(env, { actor_id: ctx.user.id, category_id: id, action: "category.create", target_id: id, summary: name, source: ctx.source });
-  return (await env.DB.prepare(`SELECT * FROM categories WHERE id = ?`).bind(id).first<CategoryRow>())!;
+  return loadCategory(env, id);
 }
 
-export async function updateCategory(env: Env, ctx: AuthContext, id: string, input: { name?: unknown; description?: unknown; color?: unknown; archived?: unknown; join_policy?: unknown; track?: unknown }): Promise<CategoryRow> {
-  const c = await env.DB.prepare(`SELECT * FROM categories WHERE id = ?`).bind(id).first<CategoryRow>();
+export async function updateCategory(env: Env, ctx: AuthContext, id: string, input: { name?: unknown; description?: unknown; color?: unknown; archived?: unknown; join_policy?: unknown; track?: unknown; is_public?: unknown; pin?: unknown }): Promise<CategoryRow> {
+  const c = await env.DB.prepare(`SELECT * FROM categories WHERE id = ?`).bind(id).first<CategoryRow & { pin_hash: string | null }>();
   if (!c) bad("카테고리를 찾을 수 없습니다");
   const sets: string[] = [];
   const params: unknown[] = [];
+  const notes: string[] = [];
+  let revokeViewers = false;
+  // 공개 열람 · 핀
+  if (input.is_public !== undefined && input.is_public !== null) {
+    const pub = bool(input.is_public) ? 1 : 0;
+    if (pub !== (c.is_public ? 1 : 0)) {
+      sets.push("is_public = ?");
+      params.push(pub);
+      notes.push(pub ? "공개 열람 켬" : "공개 열람 끔");
+      if (!pub) revokeViewers = true;
+    }
+  }
+  if (input.pin !== undefined && input.pin !== null) {
+    const pin = normPin(input.pin);
+    const newHash = pin ? await pinHash(id, pin) : null;
+    if (newHash !== c.pin_hash) {
+      sets.push("pin_hash = ?", "pin_updated_at = ?");
+      params.push(newHash, pin ? nowIso() : null);
+      notes.push(pin ? "핀 변경" : "핀 해제");
+      revokeViewers = true;
+    }
+  }
   if (input.name !== undefined) {
     const n = str(input.name, 100);
     if (!n) bad("name 은 비울 수 없습니다");
@@ -94,12 +138,24 @@ export async function updateCategory(env: Env, ctx: AuthContext, id: string, inp
   if (input.archived !== undefined && input.archived !== null) {
     sets.push("archived_at = ?");
     params.push(bool(input.archived) ? nowIso() : null);
+    if (bool(input.archived)) revokeViewers = true;
   }
   if (!sets.length) bad("변경할 필드가 없습니다");
   params.push(id);
   await env.DB.prepare(`UPDATE categories SET ${sets.join(", ")} WHERE id = ?`).bind(...params).run();
-  await logActivity(env, { actor_id: ctx.user.id, category_id: id, action: "category.update", target_id: id, summary: str(input.name, 100) || c.name, source: ctx.source });
-  return (await env.DB.prepare(`SELECT * FROM categories WHERE id = ?`).bind(id).first<CategoryRow>())!;
+  if (revokeViewers) {
+    const n = await revokeViewerSessions(env, id);
+    if (n) notes.push(`열람 세션 ${n}건 만료`);
+  }
+  await logActivity(env, { actor_id: ctx.user.id, category_id: id, action: "category.update", target_id: id, summary: `${str(input.name, 100) || c.name}${notes.length ? ` (${notes.join(", ")})` : ""}`, source: ctx.source });
+  return loadCategory(env, id);
+}
+
+/** 카테고리 관련 관리자 조치를 활동 로그에만 남긴다 */
+export async function updateCategoryNote(env: Env, ctx: AuthContext, id: string, note: string): Promise<void> {
+  const c = await env.DB.prepare(`SELECT name FROM categories WHERE id = ?`).bind(id).first<{ name: string }>();
+  if (!c) bad("카테고리를 찾을 수 없습니다");
+  await logActivity(env, { actor_id: ctx.user.id, category_id: id, action: "category.update", target_id: id, summary: `${c.name} (${note})`, source: ctx.source });
 }
 
 // ---------- 사용자 ----------

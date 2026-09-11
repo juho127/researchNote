@@ -7,6 +7,7 @@ import { listActivity } from "./admin";
 import { listProjects } from "./projects";
 import { listEntries } from "./entries";
 import { pendingJoinCount } from "./teams";
+import { shapeCategory } from "./admin";
 
 /** /api/me — 로그인 사용자 요약 */
 export async function me(env: Env, ctx: AuthContext) {
@@ -15,13 +16,15 @@ export async function me(env: Env, ctx: AuthContext) {
     const t = await env.DB.prepare(`SELECT hint, label, created_at, last_used_at FROM tokens WHERE id = ?`).bind(ctx.tokenId).first<{ hint: string; label: string; created_at: string; last_used_at: string | null }>();
     tokenHint = t?.hint ?? null;
   }
-  const projects = await listProjects(env, ctx, { owner_id: ctx.user.id, status: "all", limit: 100 });
-  const pendingJoins = await pendingJoinCount(env, ctx);
+  const projects = ctx.viewer ? [] : await listProjects(env, ctx, { owner_id: ctx.user.id, status: "all", limit: 100 });
+  const pendingJoins = ctx.viewer ? 0 : await pendingJoinCount(env, ctx);
   return {
     pending_joins: pendingJoins,
     user: { id: ctx.user.id, name: ctx.user.name, email: ctx.user.email, role: ctx.user.role, created_at: ctx.user.created_at },
     is_admin: ctx.isAdmin,
-    bootstrap: ctx.tokenId === null,
+    /** 핀 열람 모드면 {category_id, category_name, expires_at} (읽기 전용) */
+    viewer: ctx.viewer ? { category_id: ctx.viewer.category_id, category_name: ctx.viewer.category_name, expires_at: ctx.viewer.expires_at } : null,
+    bootstrap: ctx.tokenId === null && !ctx.viewer,
     token_hint: tokenHint,
     memberships: ctx.memberships,
     my_projects: projects.filter((p) => p.status !== "archived"),
@@ -35,8 +38,9 @@ export async function me(env: Env, ctx: AuthContext) {
 /** 카테고리 상세 (구성원 · 프로젝트 · 최근 활동) */
 export async function categoryDetail(env: Env, ctx: AuthContext, categoryId: string) {
   requireCategoryMember(ctx, categoryId);
-  const cat = await env.DB.prepare(`SELECT * FROM categories WHERE id = ?`).bind(categoryId).first();
-  if (!cat) notFound("카테고리를 찾을 수 없습니다");
+  const catRaw = await env.DB.prepare(`SELECT * FROM categories WHERE id = ?`).bind(categoryId).first<{ id: string; name: string; description: string; track: string; join_policy: string; pin_hash?: string | null; is_public?: number }>();
+  if (!catRaw) notFound("카테고리를 찾을 수 없습니다");
+  const cat = shapeCategory(catRaw);
   const members = await env.DB
     .prepare(
       `SELECT u.id, u.name, u.email, m.role, u.last_seen_at,
@@ -59,7 +63,9 @@ export async function categoryDetail(env: Env, ctx: AuthContext, categoryId: str
     const jr = await env.DB.prepare(`SELECT r.id, r.user_id, u.name AS user_name, u.email AS user_email, r.message, r.created_at FROM join_requests r JOIN users u ON u.id = r.user_id WHERE r.category_id = ? AND r.status = 'pending' ORDER BY r.created_at`).bind(categoryId).all();
     joinRequests = jr.results ?? [];
   }
-  return { category: cat, members: members.results, projects, activity, review_queue: reviewQueue, my_role: myRole, join_requests: joinRequests };
+  // 핀 열람자에게는 구성원 이메일을 보여주지 않는다
+  const memberRows = (members.results ?? []).map((m) => (ctx.viewer ? { ...(m as Record<string, unknown>), email: "" } : m));
+  return { category: cat, members: memberRows, projects, activity, review_queue: reviewQueue, my_role: myRole, join_requests: joinRequests };
 }
 
 /** 팀 활동 피드 (소속 카테고리 전체 또는 지정 카테고리) */

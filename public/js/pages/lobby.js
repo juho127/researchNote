@@ -30,7 +30,7 @@ export async function render(container, query) {
       add(h("button.btn.primary.sm", { onclick: () => joinDialog(t, container) }, t.join_policy === "open" || me.is_admin ? "가입하기" : "가입 요청"), t.my_request_status === "rejected" ? pill("이전 요청 거절됨", "bad sm") : null);
     }
     return h("div.card.pcard", { style: { minHeight: "200px" } },
-      h("div.row.between.top", h("div.row", { style: { gap: "6px" } }, pill(t.track === "capstone" ? "캡스톤" : "논문", t.track === "capstone" ? "gold sm" : "sm"), pill(pl, pc + " sm"),
+      h("div.row.between.top", h("div.row", { style: { gap: "6px" } }, pill(t.track === "capstone" ? "캡스톤" : "논문", t.track === "capstone" ? "gold sm" : "sm"), pill(pl, pc + " sm"), t.is_public ? pill("공개 열람", "ok sm") : null,
         t.my_membership ? pill(t.my_membership === "lead" ? "리드" : t.my_membership === "evaluator" ? "평가자" : "구성원", "navy sm") : t.my_role === "admin" ? pill("관리자 접근", "mute sm") : null), h("span.small.muted", t.last_activity_at ? `활동 ${fmtRel(t.last_activity_at)}` : "활동 없음")),
       h("div.title", t.name),
       t.description ? h("div.small", { style: { color: "#3C4E57" } }, t.description.length > 140 ? t.description.slice(0, 140) + "…" : t.description) : null,

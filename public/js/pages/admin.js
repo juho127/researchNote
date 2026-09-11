@@ -113,13 +113,20 @@ function rejectDialog(r, body) {
 async function categories(body) {
   const cats = await get("/api/admin/categories?all=1");
   const POL = { open: ["즉시", "ok"], approval: ["승인", "warn"], closed: ["초대", "mute"] };
-  const table = h("div.table-wrap", h("table.table", h("thead", h("tr", h("th", "이름"), h("th", "트랙"), h("th", "ID"), h("th", "설명"), h("th", "가입"), h("th", "리드"), h("th", "구성원"), h("th", "프로젝트"), h("th", ""))),
+  const pubCell = (c) => {
+    if (!c.is_public) return h("span.tiny.muted", "-");
+    const p = c.pin_set ? pill("공개 · 핀", "ok sm") : pill("공개 · 핀 없음", "warn sm");
+    const n = c.active_viewers ? h("div.tiny.muted", `열람 세션 ${c.active_viewers}`, " ", h("button.btn.ghost.xs", { title: "지금 열람 중인 세션을 모두 끊습니다 (핀은 유지)", onclick: async () => { if (await confirmDialog(`${c.name} 의 열람 세션 ${c.active_viewers}건을 만료시킬까요? (핀은 유지)`, { okLabel: "만료" })) { await post(`/api/admin/categories/${c.id}/viewers/revoke`); toast("열람 세션을 만료시켰습니다"); categories(body); } } }, "만료")) : null;
+    return h("div", p, n);
+  };
+  const table = h("div.table-wrap", h("table.table", h("thead", h("tr", h("th", "이름"), h("th", "트랙"), h("th", "ID"), h("th", "설명"), h("th", "가입"), h("th", "공개 열람"), h("th", "리드"), h("th", "구성원"), h("th", "프로젝트"), h("th", ""))),
     h("tbody", cats.map((c) => h("tr", { class: c.archived_at ? "dim" : "" },
       h("td", h("a", { href: `#/team/${c.id}`, style: { fontWeight: 700 } }, c.name), c.archived_at ? [" ", pill("보관", "mute sm")] : null),
       h("td", pill(c.track === "capstone" ? "캡스톤" : "논문", c.track === "capstone" ? "gold sm" : "sm")),
-      h("td", h("code", c.id)), h("td.small", c.description || ""), h("td", pill((POL[c.join_policy] || [c.join_policy, ""])[0], (POL[c.join_policy] || ["", ""])[1] + " sm")), h("td.small", c.lead_names || "-"), h("td", String(c.member_count)), h("td", String(c.project_count)),
+      h("td", h("code", c.id)), h("td.small", c.description || ""), h("td", pill((POL[c.join_policy] || [c.join_policy, ""])[0], (POL[c.join_policy] || ["", ""])[1] + " sm")), h("td", pubCell(c)), h("td.small", c.lead_names || "-"), h("td", String(c.member_count)), h("td", String(c.project_count)),
       h("td.right", h("button.btn.xs", { onclick: () => categoryDialog(c, body) }, "수정")))))));
-  mount(body, h("div.row.between", { style: { marginBottom: "12px" } }, h("p.small.muted", "카테고리 = 연구 그룹/팀. 같은 카테고리 구성원끼리 프로젝트를 공유·검토합니다."), h("button.btn.primary", { onclick: () => categoryDialog(null, body) }, "+ 카테고리")), cats.length ? table : h("div.empty", "카테고리를 만들어 연구원을 배정하세요"));
+  const viewUrl = `${location.origin}/#/view`;
+  mount(body, h("div.row.between", { style: { marginBottom: "12px" } }, h("p.small.muted", "카테고리 = 연구 그룹/팀. 같은 카테고리 구성원끼리 프로젝트를 공유·검토합니다. 공개 열람을 켜고 핀을 정하면 외부인이 ", h("a", { href: "#/view", target: "_blank" }, viewUrl), " 에서 핀만으로 읽기 전용 열람(24시간)을 할 수 있습니다."), h("button.btn.primary", { onclick: () => categoryDialog(null, body) }, "+ 카테고리")), cats.length ? table : h("div.empty", "카테고리를 만들어 연구원을 배정하세요"));
 }
 function categoryDialog(c, body) {
   const name = input({ value: c?.name || "", placeholder: "예: LLM 응용, 시계열 예측, 인과추론" });
@@ -128,11 +135,25 @@ function categoryDialog(c, body) {
   const policy = select([{ value: "approval", label: "승인 후 가입 (리드·관리자가 로비 가입 요청을 승인)" }, { value: "open", label: "즉시 가입 (로비에서 누구나)" }, { value: "closed", label: "초대만 (관리자가 직접 배정)" }], { value: c?.join_policy || "approval" });
   const trackSel = select([{ value: "paper", label: "논문 — 기획 → 리서치 → 관련기법 → 실험결과 → 논문작성 → 검토·투고" }, { value: "capstone", label: "캡스톤 — 주제·문제 발견 → 시장·사업모델 → MVP 빌드·배포 → 피드백·개선 → 사업성·최종보고 → 최종 발표" }], { value: c?.track || "paper", disabled: !!(c && c.project_count > 0) });
   const archived = h("input", { type: "checkbox", checked: !!c?.archived_at });
-  modal({ title: c ? "카테고리 수정" : "새 카테고리", wide: true, body: h("div.stack", field("이름", name), field("ID", id), field("설명", desc), field("트랙 (단계 구성·평가 루브릭)", trackSel, c && c.project_count > 0 ? "프로젝트가 있는 카테고리는 트랙을 바꿀 수 없습니다" : "캡스톤 트랙은 팀 프로젝트(협업자)·마일스톤·루프 기반 평가 루브릭을 씁니다"), field("가입 정책", policy, "팀 로비에서의 가입 방식"), c ? h("label.check", archived, "보관 (목록에서 숨김, 구성원 접근 차단)") : null),
+  // 공개 열람 · 핀
+  const isPublic = h("input", { type: "checkbox", checked: !!c?.is_public });
+  const pin = input({ placeholder: c?.pin_set ? "설정됨 · 바꾸려면 새 핀 입력 (영문·숫자 4~12자)" : "영문·숫자 4~12자 (예: 2026a)", maxlength: 12, autocomplete: "off", spellcheck: false, disabled: !isPublic.checked });
+  const clearPin = h("input", { type: "checkbox", disabled: !isPublic.checked || !c?.pin_set });
+  const pinHelp = h("span.help", c?.pin_set ? `핀 설정됨${c.pin_updated_at ? ` (${fmtRel(c.pin_updated_at)} 변경)` : ""} · 핀을 바꾸거나 해제하면 현재 열람 세션은 모두 끊깁니다` : "핀이 없으면 공개로 표시되어도 열람할 수 없습니다");
+  isPublic.addEventListener("change", () => { pin.disabled = !isPublic.checked; clearPin.disabled = !isPublic.checked || !c?.pin_set; });
+  const publicBox = h("div.card.pad-s", { style: { background: "var(--wash)" } },
+    h("label.check", isPublic, h("b", "공개 열람 허용"), h("span.small.muted", " — 토큰·가입 없이 핀만으로 읽기 전용 열람 (세션 24시간, 5회 오류 시 10분 잠금)")),
+    h("div.form-grid", { style: { marginTop: "8px" } }, h("label.field", h("span", c?.pin_set ? "새 핀 (비우면 유지)" : "핀"), pin, pinHelp), c?.pin_set ? h("label.check", { style: { alignSelf: "end" } }, clearPin, "핀 해제 (열람 중단)") : null),
+    h("p.help", { style: { margin: "6px 0 0" } }, "열람자는 프로젝트·기록·단계 정리·공개된 평가·보고서를 볼 수 있고, 구성원 이메일·가입 요청·초안 평가는 보지 못합니다. 열람 페이지: ", h("code", `${location.origin}/#/view`)),
+  );
+  modal({ title: c ? "카테고리 수정" : "새 카테고리", wide: true, body: h("div.stack", field("이름", name), field("ID", id), field("설명", desc), field("트랙 (단계 구성·평가 루브릭)", trackSel, c && c.project_count > 0 ? "프로젝트가 있는 카테고리는 트랙을 바꿀 수 없습니다" : "캡스톤 트랙은 팀 프로젝트(협업자)·마일스톤·루프 기반 평가 루브릭을 씁니다"), field("가입 정책", policy, "팀 로비에서의 가입 방식"), publicBox, c ? h("label.check", archived, "보관 (목록에서 숨김, 구성원 접근 차단)") : null),
     actions: [{ label: "취소" }, { label: c ? "저장" : "만들기", cls: "primary", onClick: async () => {
       if (!name.value.trim()) { toast("이름을 입력하세요", true); return false; }
-      if (c) await patch(`/api/admin/categories/${c.id}`, { name: name.value.trim(), description: desc.value, archived: archived.checked, join_policy: policy.value, track: trackSel.value });
-      else await post("/api/admin/categories", { name: name.value.trim(), description: desc.value, id: id.value.trim() || undefined, join_policy: policy.value, track: trackSel.value });
+      const pinVal = pin.value.trim();
+      if (isPublic.checked && !c?.pin_set && !pinVal && !clearPin.checked) { toast("공개 열람을 켜려면 핀을 정하세요", true); pin.focus(); return false; }
+      const pinField = clearPin.checked ? "" : pinVal || undefined; // undefined = 변경 없음
+      if (c) await patch(`/api/admin/categories/${c.id}`, { name: name.value.trim(), description: desc.value, archived: archived.checked, join_policy: policy.value, track: trackSel.value, is_public: isPublic.checked, pin: pinField });
+      else await post("/api/admin/categories", { name: name.value.trim(), description: desc.value, id: id.value.trim() || undefined, join_policy: policy.value, track: trackSel.value, is_public: isPublic.checked, pin: pinField });
       toast("저장했습니다"); state.me = null; window.dispatchEvent(new Event("rn:refresh"));
     } }] });
 }
