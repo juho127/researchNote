@@ -15,9 +15,10 @@
 | GET | `/connect` (= `/ai`, `/llms.txt`) | AI 에이전트용 자기 연동 안내 (markdown) |
 | GET | `/SKILL.md` | AI 사용 지침 |
 | GET | `/api/public/config` | `{app, signup_enabled, signup_code_required, categories[]}` |
-| POST | `/api/public/requests` | `{name*, email, category_id, note, signup_code?}` → 201 `{id, claim_code(1회 표시), status}` |
+| POST | `/api/public/requests` | `{name*, email, category_id, note, signup_code?}` → 201 `{id, claim_code(1회 표시), status}`. 같은 이메일로 대기 중이면 400, 이미 계정이 있으면 409 `already_registered` |
 | GET | `/api/public/requests/:claim_code` | `{status: pending|approved|rejected, claimed, decision_note, ...}` |
 | POST | `/api/public/requests/:claim_code/claim` | 승인된 신청의 토큰 1회 수령 → `{token, user_id, name}` (409: 대기/거절/이미 수령) |
+| POST | `/api/public/reissue` | 기존 회원 토큰 재발급 `{name*, email*, note, revoke_existing(기본 true)}`. 이름+이메일이 활성 계정과 일치해야 함(404 `no_match`, IP당 5회 → 10분 잠금 429). `REISSUE_AUTO` 기본: 201 `{mode:"auto", token(1회 표시), user_id, revoked}` 즉시 발급(시간당 3회). `REISSUE_AUTO="false"`: 201 `{mode:"approval", id, claim_code, status}` → 관리자 승인 후 `/claim` |
 | GET | `/api/public/teams` | 핀 열람이 가능한(공개 + 핀 설정) 팀 목록 `[{id, name, description, track, member_count, active_projects}]` |
 | POST | `/api/public/teams/:id/pin` | `{pin*, label?}` → `{viewer_token(rnv_…), expires_at, category}`. 401 핀 오류(남은 시도 표시), 429 5회 실패 후 10분 잠금(카테고리+IP), 404 비공개 |
 
@@ -99,9 +100,10 @@
 | Method | Path | Body / 설명 |
 |---|---|---|
 | GET | `/api/admin/requests?status=pending|approved|rejected|all` | 토큰 발급 신청 목록 |
-| POST | `/api/admin/requests/:id/approve` | `{name, id, email, note, category_id, role: member|lead, decision_note}` → 계정 생성 `{request_id, user}` |
+| POST | `/api/admin/requests/:id/approve` | 가입(kind=signup): `{name, id, email, note, category_id, role: member|lead|evaluator, decision_note, force}` → 계정 생성 `{request_id, user}`. 같은 이메일 계정이 있으면 409 `duplicate_email` (force=true 로 강행). 재발급(kind=reissue): `{revoke_existing: bool, decision_note}` → `{request_id, user, revoked}` (계정 생성 없음) |
 | POST | `/api/admin/requests/:id/reject` | `{reason}` |
 | DELETE | `/api/admin/requests/:id` | 처리된 신청 기록 삭제 |
+| POST | `/api/admin/requests/:id/reissue-claim` | 승인된 신청의 수령 코드 재발급 → `{claim_code(1회 표시), name, user_id, was_claimed}`. 이전 코드 즉시 무효, 미수령 상태로 복귀 |
 
 | Method | Path | Body / 설명 |
 |---|---|---|
@@ -111,6 +113,7 @@
 | POST | `/api/admin/categories` | `{name*, description, color, id, join_policy: open|approval|closed, track: paper|capstone, is_public: bool, pin: "영문·숫자 4~12자"}` |
 | PATCH | `/api/admin/categories/:id` | `{name, description, color, archived: bool, join_policy, track(프로젝트가 없을 때만), is_public: bool, pin: 새 핀 \| ""(해제)}`. 핀 변경·해제·공개 해제·보관 시 열람 세션 전부 만료. 응답에 `pin_set`, `pin_updated_at`, `active_viewers` (핀·해시는 절대 반환하지 않음) |
 | POST | `/api/admin/categories/:id/viewers/revoke` | 현재 열람 세션 전부 만료 (핀 유지) → `{revoked}` |
+| POST | `/api/admin/locks/clear` | `{category_id?, ip?}` 핀 입력·재발급 시도 잠금 해제 (비우면 전체) → `{cleared}` |
 | GET | `/api/admin/users` | 사용자 + `memberships[], token_count, active_tokens, project_count, entry_count, last_entry_at` |
 | POST | `/api/admin/users` | `{name*, id, email, role: admin|member, note, categories: ["cat"] | [{category_id, role: lead|member}], issue_token: bool}` → `{user, token?, token_hint?}` |
 | PATCH | `/api/admin/users/:id` | `{name, email, role, note, disabled: bool, categories(전체 교체)}` |

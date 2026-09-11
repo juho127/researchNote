@@ -11,6 +11,7 @@ import * as S from "./services/signup";
 import * as TM from "./services/teams";
 import * as EV from "./services/evaluations";
 import * as PV from "./services/publicview";
+import { logActivity } from "./lib/db";
 
 type Handler = (req: Request, env: Env, ctx: AuthContext, params: Record<string, string>, url: URL) => Promise<Response>;
 
@@ -51,6 +52,8 @@ addPublic("GET", "/api/public/config", async (_r, env) => json(await S.publicCon
 addPublic("POST", "/api/public/requests", async (req, env) => json(await S.createRequest(env, await readJson(req, 16 * 1024)), 201));
 addPublic("GET", "/api/public/requests/:claim", async (_r, env, p) => json(await S.requestStatus(env, p.claim)));
 addPublic("POST", "/api/public/requests/:claim/claim", async (_r, env, p) => json(await S.claimToken(env, p.claim)));
+// 기존 회원 토큰 재발급 요청 (이름+이메일 일치 → 관리자 승인 → 수령 코드로 수령)
+addPublic("POST", "/api/public/reissue", async (req, env) => json(await S.requestReissue(env, req, await readJson(req, 16 * 1024)), 201));
 // 공개 카테고리 핀 열람: 팀 목록 → 핀 입력 → 열람 토큰(rnv_, 24시간, 읽기 전용)
 addPublic("GET", "/api/public/teams", async (_r, env) => json(await PV.listPublicTeams(env)));
 addPublic("POST", "/api/public/teams/:id/pin", async (req, env, p) => json(await PV.pinLogin(env, req, p.id, await readJson(req, 4 * 1024))));
@@ -207,6 +210,13 @@ add("POST", "/api/admin/tokens/:id/revoke", admin(async (_r, env, ctx, p) => {
   await A.revokeToken(env, ctx, p.id);
   return json({ ok: true });
 }));
+// 핀 입력·재발급 시도 잠금 해제 (body: {category_id?, ip?}; 비우면 전체)
+add("POST", "/api/admin/locks/clear", admin(async (req, env, ctx) => {
+  const b = await readJson<{ category_id?: unknown; ip?: unknown }>(req);
+  const n = await PV.clearLocks(env, typeof b.category_id === "string" ? b.category_id : undefined, typeof b.ip === "string" ? b.ip : undefined);
+  await logActivity(env, { actor_id: ctx.user.id, action: "admin.locks_clear", summary: `잠금 ${n}건 해제`, source: ctx.source });
+  return json({ ok: true, cleared: n });
+}));
 // 카테고리의 핀 열람 세션 전부 만료 (핀은 유지)
 add("POST", "/api/admin/categories/:id/viewers/revoke", admin(async (_r, env, ctx, p) => {
   const n = await PV.revokeViewerSessions(env, p.id);
@@ -221,6 +231,7 @@ add("POST", "/api/admin/requests/:id/reject", admin(async (req, env, ctx, p) => 
   return json(await S.rejectRequest(env, ctx, p.id, b.reason));
 }));
 add("DELETE", "/api/admin/requests/:id", admin(async (_r, env, _c, p) => json(await S.deleteRequest(env, p.id))));
+add("POST", "/api/admin/requests/:id/reissue-claim", admin(async (_r, env, ctx, p) => json(await S.reissueClaim(env, ctx, p.id))));
 
 // ---------- 디스패치 ----------
 export async function handleApi(request: Request, env: Env): Promise<Response> {

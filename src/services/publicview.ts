@@ -114,6 +114,16 @@ export async function revokeViewerSessions(env: Env, categoryId: string): Promis
   return r.meta.changes ?? 0;
 }
 
+/** 관리자용: 핀·재발급 잠금 해제 (category_id 생략 시 전체, ip 생략 시 해당 키 전체). 잠긴 학생을 즉시 풀어줄 때 */
+export async function clearLocks(env: Env, categoryId?: string, ip?: string): Promise<number> {
+  const where: string[] = [];
+  const params: unknown[] = [];
+  if (categoryId) { where.push("category_id = ?"); params.push(categoryId); }
+  if (ip) { where.push("ip = ?"); params.push(ip); }
+  const r = await env.DB.prepare(`DELETE FROM pin_attempts ${where.length ? "WHERE " + where.join(" AND ") : ""}`).bind(...params).run();
+  return r.meta.changes ?? 0;
+}
+
 /** 관리자용: 카테고리별 활성 열람 세션 수 */
 export async function activeViewerCount(env: Env, categoryId: string): Promise<number> {
   const r = await env.DB.prepare(`SELECT COUNT(*) AS n FROM viewer_sessions WHERE category_id = ? AND expires_at > ?`).bind(categoryId, nowIso()).first<{ n: number }>();

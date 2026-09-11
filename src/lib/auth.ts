@@ -1,5 +1,5 @@
 import type { AuthContext, Env, Membership, User, ViewerInfo } from "../env";
-import { sha256Hex } from "./id";
+import { sha256Hex, normalizeToken } from "./id";
 import { nowIso } from "./time";
 import { unauthorized, forbidden } from "./http";
 
@@ -8,10 +8,18 @@ const BOOTSTRAP_ADMIN_ID = "bootstrap-admin";
 
 function extractToken(request: Request): string {
   const auth = request.headers.get("authorization") || "";
-  if (/^bearer\s+/i.test(auth)) return auth.replace(/^bearer\s+/i, "").trim();
+  if (/^bearer\s+/i.test(auth)) return normalizeToken(auth);
   const key = request.headers.get("x-api-key");
-  if (key) return key.trim();
+  if (key) return normalizeToken(key);
   return "";
+}
+
+/** 토큰이 아닌 값을 넣었을 때 원인을 바로 알 수 있게 형식을 먼저 검사한다 */
+function rejectNonToken(token: string): void {
+  if (token.startsWith("clm_")) unauthorized("수령 코드(clm_…)는 로그인 토큰이 아닙니다. 발급 신청 상태 페이지(/#/claim/<수령 코드>)에서 [토큰 받기]를 눌러 rn_ 로 시작하는 토큰을 먼저 받으세요");
+  if (token.includes("…") || token.includes("...")) unauthorized("가려진 토큰(rn_xxxx…xxxx)은 표시용입니다. 발급 시 한 번 보여준 전체 토큰(43자)이 필요합니다. 잃어버렸다면 관리자에게 재발급을 요청하세요");
+  if (token.startsWith("${") || /RESEARCH_NOTE_TOKEN/.test(token)) unauthorized("환경변수 RESEARCH_NOTE_TOKEN 이 설정되지 않아 토큰 자리에 '${RESEARCH_NOTE_TOKEN}' 문자열이 그대로 전송되었습니다. 환경변수를 설정하거나 설정 파일에 토큰 값을 직접 넣으세요");
+  if (!/^rn_[A-Za-z0-9]{30,64}$/.test(token)) unauthorized(`토큰 형식이 아닙니다. 토큰은 rn_ 로 시작하는 43자 영문·숫자입니다 (받은 값: ${token.slice(0, 4)}… ${token.length}자). 복사할 때 앞뒤가 잘리거나 다른 값이 섞이지 않았는지 확인하세요`);
 }
 
 async function loadMemberships(db: D1Database, userId: string): Promise<Membership[]> {
@@ -100,7 +108,12 @@ export async function authenticate(request: Request, env: Env, source: AuthConte
     )
     .bind(hash)
     .first<User & { token_id: string; revoked_at: string | null }>();
-  if (!row) unauthorized("유효하지 않은 토큰입니다");
+  if (!row) {
+    // 진단용: 형식·길이·경로만 남긴다 (토큰 값 자체는 로그에 남기지 않음)
+    console.warn("auth.invalid_token", JSON.stringify({ prefix: token.slice(0, 4), len: token.length, source, path: new URL(request.url).pathname, ua: (request.headers.get("user-agent") || "").slice(0, 60) }));
+    rejectNonToken(token);
+    unauthorized("발급된 적 없는 토큰입니다 (오타 또는 다른 서버의 토큰). 관리자에게 재발급을 요청하세요");
+  }
   if (row.revoked_at) unauthorized("회수된 토큰입니다. 관리자에게 새 토큰을 요청하세요");
   if (row.disabled_at) unauthorized("비활성화된 계정입니다");
 

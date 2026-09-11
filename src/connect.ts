@@ -34,6 +34,13 @@ export async function connectMarkdown(env: Env, base: string): Promise<string> {
 
 **(a) 토큰이 있으면** 그대로 2단계로.
 
+**(a') 예전에 토큰을 받았는데 잃어버렸으면 재발급 요청** (새로 가입 신청하지 않는다 — 같은 이메일은 중복이라 거부된다):
+   \`\`\`bash
+   curl -s -X POST ${base}/api/public/reissue -H "Content-Type: application/json" -d '{"name":"<등록한 이름>","email":"<등록한 이메일>","note":"<사유, 선택>","revoke_existing":true}'
+   # → ${cfg.reissue_auto ? '{"mode":"auto","token":"rn_…","user_id":"…"}  즉시 발급 (기존 토큰은 기본 회수; 다른 기기 토큰을 유지하려면 revoke_existing:false)' : '{"mode":"approval","id":"req_…","claim_code":"clm_…","status":"pending"}  관리자 승인 후 (b)의 3~5단계로 수령'}
+   # 404 = 이름·이메일 불일치 (5회 틀리면 10분 잠금)
+   \`\`\`
+
 **(b) 토큰이 없으면 발급 신청**${cfg.signup_enabled ? "" : " — ⚠ 현재 공개 신청이 꺼져 있다. 관리자에게 직접 토큰을 요청하라고 안내하고 종료."}
 
 1. 사용자에게 묻는다: 이름(필수), 이메일(선택), 희망 카테고리(아래 목록에서), 메모(학번·과정·지도교수 등, 선택)${cfg.signup_code_required ? ", 신청 코드(연구책임자가 알려준 코드, 필수)" : ""}.

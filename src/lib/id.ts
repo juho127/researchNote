@@ -13,9 +13,31 @@ export function newId(prefix: string): string {
   return `${prefix}_${randomString(12, "abcdefghijklmnopqrstuvwxyz0123456789")}`;
 }
 
-/** 개인 접근 토큰 생성: rn_ + 40자 */
+/** 손으로 옮겨 적어도 헷갈리지 않도록 0/O, 1/l/I 를 뺀 알파벳 (토큰·수령 코드용) */
+const UNAMBIGUOUS = "abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+
+/** 개인 접근 토큰 생성: rn_ + 40자 (혼동 문자 제외) */
 export function newToken(): string {
-  return "rn_" + randomString(40);
+  return "rn_" + randomString(40, UNAMBIGUOUS);
+}
+
+/** 수령 코드: clm_ + 24자 (혼동 문자 제외) */
+export function newClaimCode(): string {
+  return "clm_" + randomString(24, UNAMBIGUOUS);
+}
+
+/**
+ * 사용자가 붙여넣은 토큰 정규화: 앞뒤 공백·따옴표, "Bearer " 접두, 내부 공백/줄바꿈 제거.
+ * (안내문이나 curl 명령에서 복사할 때 섞여 들어오는 것들)
+ */
+export function normalizeToken(raw: string): string {
+  let t = String(raw ?? "").trim();
+  // "Bearer" 접두와 따옴표가 겹쳐 있을 수 있으므로 안정될 때까지 벗긴다 (예: Bearer "Bearer rn_…")
+  for (let i = 0; i < 3; i++) {
+    t = t.replace(/^(authorization\s*:\s*)?bearer\s+/i, "").trim();
+    t = t.replace(/^["'`“”‘’]+|["'`“”‘’]+$/g, "").trim();
+  }
+  return t.replace(/\s+/g, "");
 }
 
 export function tokenHint(token: string): string {

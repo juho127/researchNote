@@ -1,4 +1,5 @@
 import { state, get, post, patch, put, del, h, mount, pill, avatar, stages, stageLabel, fmtRel, fmtDT, daysSince, input, textarea, field, select, modal, confirmDialog, toast, errToast, copyText, ACTION_LABEL } from "../core.js";
+import { ApiError } from "../core.js";
 import { feedList } from "./home.js";
 
 export async function render(container, sub, query) {
@@ -60,15 +61,18 @@ async function requests(body, query) {
   for (const [k, l] of [["pending", "대기"], ["approved", "승인됨"], ["rejected", "거절됨"], ["all", "전체"]]) seg.append(h("button", { class: status === k ? "active" : "", onclick: () => (location.hash = `#/admin/requests?status=${k}`) }, l));
   const origin = location.origin;
   const rows = list.map((r) => h("tr", { class: r.status === "pending" ? "" : "dim" },
-    h("td", h("b", r.name), h("div.tiny.muted", r.email || "-")),
+    h("td", h("b", r.name), r.kind === "reissue" ? [" ", pill("재발급", "navy sm")] : null, h("div.tiny.muted", r.email || "-"), r.kind === "reissue" && r.user_id ? h("div.tiny.muted", `계정: ${r.user_id}`) : null),
     h("td.small", r.category_name || h("span.muted", "미정")),
     h("td.small", { style: { maxWidth: "280px" } }, r.note || ""),
     h("td.small.muted", fmtDT(r.created_at)),
     h("td", r.status === "pending" ? pill("대기", "warn sm") : r.status === "approved" ? [pill("승인", "ok sm"), r.claimed_at ? h("div.tiny.muted", `수령 ${fmtRel(r.claimed_at)}`) : h("div.tiny", { style: { color: "var(--brick)" } }, "미수령")] : pill("거절", "bad sm"),
       r.decided_at ? h("div.tiny.muted", `${r.decided_by_name || ""} · ${fmtRel(r.decided_at)}`) : null, r.decision_note && r.status === "rejected" ? h("div.tiny.muted", r.decision_note) : null),
     h("td.right", r.status === "pending"
-      ? h("div.row", { style: { justifyContent: "flex-end", gap: "4px" } }, h("button.btn.xs.primary", { onclick: () => approveDialog(r, cats, body) }, "승인"), h("button.btn.xs.danger", { onclick: () => rejectDialog(r, body) }, "거절"))
-      : h("div.row", { style: { justifyContent: "flex-end", gap: "4px" } }, r.user_id ? h("a.btn.xs", { href: "#/admin/users" }, "연구원") : null, h("button.btn.ghost.xs", { onclick: async () => { if (await confirmDialog("이 신청 기록을 삭제할까요?", { danger: true, okLabel: "삭제" })) { await del(`/api/admin/requests/${r.id}`); render(body.parentElement, "requests", query); } } }, "삭제"))),
+      ? h("div.row", { style: { justifyContent: "flex-end", gap: "4px" } }, h("button.btn.xs.primary", { onclick: () => (r.kind === "reissue" ? reissueApproveDialog(r, body) : approveDialog(r, cats, body)) }, "승인"), h("button.btn.xs.danger", { onclick: () => rejectDialog(r, body) }, "거절"))
+      : h("div.row", { style: { justifyContent: "flex-end", gap: "4px" } },
+          r.status === "approved" ? h("button.btn.xs" + (r.claimed_at ? "" : ".primary"), { title: r.claimed_at ? "이미 수령했지만 토큰을 잃어버린 경우 (기존 토큰은 유지)" : "학생이 수령 코드를 잃어버린 경우 새 코드를 만들어 전달", onclick: () => reissueClaimDialog(r, body, query) }, r.claimed_at ? "코드 재발급" : "수령 코드 재발급") : null,
+          r.user_id ? h("a.btn.xs", { href: "#/admin/users" }, "연구원") : null,
+          h("button.btn.ghost.xs", { onclick: async () => { if (await confirmDialog("이 신청 기록을 삭제할까요?", { danger: true, okLabel: "삭제" })) { await del(`/api/admin/requests/${r.id}`); render(body.parentElement, "requests", query); } } }, "삭제"))),
   ));
   const joins = await get(`/api/join-requests?status=${status === "all" ? "all" : status === "pending" ? "pending" : status}`);
   const joinRows = joins.map((r) => h("tr", { class: r.status === "pending" ? "" : "dim" },
@@ -82,10 +86,10 @@ async function requests(body, query) {
       h("button.btn.xs.danger", { onclick: async () => { await post(`/api/join-requests/${r.id}/reject`, { note: "" }); toast("거절했습니다"); render(body.parentElement, "requests", query); } }, "거절")) : null),
   ));
   mount(body,
-    h("div.row.between", { style: { marginBottom: "12px" } }, h("div.row", seg), h("span.small.muted", "신청 페이지: ", h("a", { href: "#/apply", target: "_blank" }, `${origin}/#/apply`), " · AI 연동: ", h("a", { href: "#/connect", target: "_blank" }, `${origin}/connect`))),
+    h("div.row.between", { style: { marginBottom: "12px" } }, h("div.row", seg, h("button.btn.ghost.xs", { title: "핀 열람·토큰 재발급에서 5회 틀려 잠긴 IP 를 모두 풉니다", onclick: async () => { if (await confirmDialog("핀·재발급 시도 잠금을 모두 해제할까요?", { okLabel: "해제" })) { const r = await post("/api/admin/locks/clear", {}); toast(`잠금 ${r.cleared}건 해제`); } } }, "잠금 해제")), h("span.small.muted", "신청: ", h("a", { href: "#/apply", target: "_blank" }, `${origin}/#/apply`), " · 재발급: ", h("a", { href: "#/reissue", target: "_blank" }, `${origin}/#/reissue`), " · AI 연동: ", h("a", { href: "#/connect", target: "_blank" }, `${origin}/connect`))),
     h("div.section-h", { style: { marginTop: 0 } }, h("h2", "토큰 발급 신청"), h("p.sub", `${list.length}건 · 신규 연구원`)),
     list.length ? h("div.table-wrap", h("table.table", h("thead", h("tr", h("th", "신청자"), h("th", "희망 카테고리"), h("th", "메모"), h("th", "신청일"), h("th", "상태"), h("th", ""))), h("tbody", rows))) : h("div.empty", status === "pending" ? "대기 중인 신청이 없습니다" : "신청이 없습니다"),
-    h("p.small.muted", { style: { marginTop: "10px" } }, "승인하면 연구원 계정과 소속이 만들어지고, 신청자는 자기 수령 코드로 토큰을 직접 1회 수령합니다(관리자는 토큰을 보지 않음). 수령 전 분실 시 [연구원] 탭에서 토큰을 발급해 전달하세요."),
+    h("p.small.muted", { style: { marginTop: "10px" } }, "승인하면 연구원 계정과 소속이 만들어지고, 신청자는 자기 수령 코드로 토큰을 직접 1회 수령합니다(관리자는 토큰을 보지 않음). ", h("b", "미수령"), " 상태가 오래가면 학생이 수령 코드를 잃어버린 경우가 대부분입니다 → [수령 코드 재발급]으로 새 코드를 만들어 전달하세요 (또는 [연구원] 탭에서 토큰을 직접 발급). 학생이 로그인 창에 수령 코드(clm_)를 넣으면 '토큰이 아님' 안내와 함께 수령 페이지로 이동합니다."),
     h("div.section-h", { style: { marginTop: "26px" } }, h("h2", "팀 가입 요청"), h("p.sub", `${joins.length}건 · 기존 연구원의 로비 가입 요청 (팀 리드도 팀 페이지에서 처리 가능)`)),
     joins.length ? h("div.table-wrap", h("table.table", h("thead", h("tr", h("th", "연구원"), h("th", "팀"), h("th", "메시지"), h("th", "요청일"), h("th", "상태"), h("th", ""))), h("tbody", joinRows))) : h("div.empty", "팀 가입 요청이 없습니다"),
   );
@@ -99,8 +103,43 @@ function approveDialog(r, cats, body) {
   const note = input({ value: r.note || "" });
   modal({ title: `승인 — ${r.name}`, body: h("div.stack", h("div.form-grid", field("이름", name), field("ID", id), field("이메일", email)), h("div.form-grid", field("소속 카테고리", cat), field("역할", role)), field("메모", note), h("p.help", "승인 즉시 계정이 생성됩니다. 토큰은 신청자가 수령 코드로 직접 받습니다.")),
     actions: [{ label: "취소" }, { label: "승인", cls: "primary", onClick: async () => {
-      await post(`/api/admin/requests/${r.id}/approve`, { name: name.value.trim(), id: id.value.trim() || undefined, email: email.value.trim(), category_id: cat.value || null, role: role.value, note: note.value });
+      const payload = { name: name.value.trim(), id: id.value.trim() || undefined, email: email.value.trim(), category_id: cat.value || null, role: role.value, note: note.value };
+      try { await post(`/api/admin/requests/${r.id}/approve`, payload); }
+      catch (e) {
+        if (e instanceof ApiError && e.code === "duplicate_email") {
+          // 같은 이메일 계정이 이미 있음: 중복 신청이면 거절, 별도 계정이면 강행
+          const go = await confirmDialog(`${e.message}\n\n그래도 별도 계정으로 승인할까요? (중복 신청이면 [취소] 후 거절하고 기존 계정의 수령 코드를 재발급하세요)`, { okLabel: "별도 계정으로 승인" });
+          if (!go) return false;
+          await post(`/api/admin/requests/${r.id}/approve`, { ...payload, force: true });
+        } else throw e;
+      }
       toast("승인했습니다"); render(body.parentElement, "requests", {});
+    } }] });
+}
+function reissueClaimDialog(r, body, query) {
+  modal({ title: `수령 코드 재발급 — ${r.name}`, body: h("div.stack",
+      h("p", r.claimed_at ? "이 신청자는 이미 토큰을 한 번 수령했습니다. 재발급하면 새 수령 코드로 토큰을 한 번 더 받을 수 있고, 기존 토큰은 그대로 유효합니다 (유출이 의심되면 [토큰] 탭에서 회수)." : "새 수령 코드를 만들어 신청자에게 전달하세요. 이전 코드는 즉시 무효가 됩니다."),
+      h("p.help", "코드는 지금 한 번만 표시됩니다. 관리자는 토큰을 보지 않고, 신청자가 코드로 직접 받습니다.")),
+    actions: [{ label: "취소" }, { label: "재발급", cls: "primary", onClick: async () => {
+      const res = await post(`/api/admin/requests/${r.id}/reissue-claim`);
+      const link = `${location.origin}/#/claim/${res.claim_code}`;
+      modal({ title: `새 수령 코드 — ${res.name}`, wide: true, body: h("div.stack",
+          h("div", h("div.small.muted", "수령 코드"), h("div.tokenbox", res.claim_code)),
+          h("div", h("div.small.muted", "수령 링크 (이 링크에서 [토큰 받기])"), h("div.tokenbox", { style: { background: "var(--wash)", color: "var(--navy)" } }, link)),
+          h("div.row", h("button.btn.sm", { onclick: () => copyText(res.claim_code) }, "코드 복사"), h("button.btn.sm.primary", { onclick: () => copyText(`${res.name} 님, 연구노트 토큰 수령 링크입니다 (1회):\n${link}\n\n[토큰 받기]를 누르면 rn_ 로 시작하는 토큰이 표시됩니다. 그 토큰으로 로그인하세요 (수령 코드가 아니라 토큰으로).`) }, "안내문 복사")),
+        ), actions: [{ label: "닫기", onClick: () => render(body.parentElement, "requests", query) }] });
+    } }] });
+}
+function reissueApproveDialog(r, body) {
+  const revoke = h("input", { type: "checkbox", checked: true });
+  modal({ title: `토큰 재발급 승인 — ${r.name}`, body: h("div.stack",
+      h("p", "기존 계정 ", h("code", r.user_id), " 의 토큰 재발급 요청입니다. 승인하면 본인이 수령 코드로 새 토큰을 1회 받습니다 (관리자는 토큰을 보지 않음)."),
+      r.note ? h("p.small.muted", `사유: ${r.note}`) : null,
+      h("label.check", revoke, "기존 토큰 모두 회수 (분실·유출이면 켜두세요. 새 기기 추가면 끄세요)"),
+    ),
+    actions: [{ label: "취소" }, { label: "승인", cls: "primary", onClick: async () => {
+      const res = await post(`/api/admin/requests/${r.id}/approve`, { revoke_existing: revoke.checked });
+      toast(`승인했습니다${res.revoked ? ` · 기존 토큰 ${res.revoked}건 회수` : ""}`); render(body.parentElement, "requests", {});
     } }] });
 }
 function rejectDialog(r, body) {

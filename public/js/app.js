@@ -64,13 +64,14 @@ async function render() {
   const [head, id] = route.parts;
 
   // 공개 페이지 (토큰 불필요)
-  if (head === "apply" || head === "claim" || head === "connect" || head === "view") {
+  if (head === "apply" || head === "claim" || head === "connect" || head === "view" || head === "reissue") {
     const c = h("div");
     mount(app, c);
     try {
       if (head === "apply") await Public.renderApply(c);
       else if (head === "claim") await Public.renderClaim(c, route.parts.slice(1).join("/") || "");
       else if (head === "view") await View.renderView(c, route.parts[1] || "", route.query);
+      else if (head === "reissue") await Public.renderReissue(c);
       else await Public.renderConnect(c);
     } catch (e) { mount(c, h("div.wrap.narrow", h("div.empty", `오류: ${e.message}`))); }
     window.scrollTo(0, 0);

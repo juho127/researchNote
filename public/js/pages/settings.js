@@ -34,7 +34,7 @@ export async function render(container) {
         h("b", "ID"), h("code", me.user.id),
         h("b", "이메일"), h("span", me.user.email || "-"),
         h("b", "소속"), h("span", me.memberships.length ? me.memberships.map((m) => `${m.category_name}${m.role === "lead" ? " (리드)" : ""}`).join(", ") : "없음"),
-        h("b", "토큰"), h("span", h("code", me.bootstrap ? "ADMIN_TOKEN (부트스트랩)" : me.token_hint || masked)),
+        h("b", "토큰"), h("span", h("code", me.bootstrap ? "ADMIN_TOKEN (부트스트랩)" : me.token_hint || masked), h("span.tiny.muted", " (앞뒤 일부만 표시 · 전체 토큰은 발급 때 한 번만 보여주며 서버는 해시만 보관)")),
         h("b", "가입"), h("span", fmtDT(me.user.created_at)),
       ), h("div.row", { style: { marginTop: "14px" } }, h("button.btn.danger", { onclick: logout }, "이 브라우저에서 로그아웃"))),
       h("div.card", h("h3", "웹 MCP 란"), h("p.small", { style: { margin: "8px 0" } }, "이 서버는 원격(HTTP) MCP 서버를 내장합니다. 연구원 컴퓨터에 아무것도 설치할 필요 없이, AI 도구에 아래 주소와 토큰을 등록하면 AI 가 whoami → log_progress → update_stage 같은 도구로 연구 진행을 대신 기록·조회합니다."),

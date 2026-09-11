@@ -12,6 +12,8 @@ export interface Env {
   SIGNUP_ENABLED?: string;
   /** 설정 시 신청 폼에 이 코드를 입력해야 함 (스팸 방지, secret 권장) */
   SIGNUP_CODE?: string;
+  /** 토큰 재발급: "false" 면 관리자 승인 후 수령, 그 외(기본)는 이름+이메일 일치 시 즉시 발급 */
+  REISSUE_AUTO?: string;
 }
 
 export type GlobalRole = "admin" | "member";

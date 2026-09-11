@@ -270,6 +270,76 @@ const ts = Date.now().toString(36);
   ok("second claim → 409", claimAgain.status === 409);
   const newMe = await api(claimed.token, "GET", "/api/me");
   ok("claimed token logs in with membership", newMe.status === 200 && newMe.data.memberships.some((m) => m.category_id === catId));
+  ok("issued token avoids ambiguous chars", !/[0OIl1]/.test(claimed.token.slice(3)));
+  // 토큰 입력 실수 대응
+  const clmLogin = await api(req1.claim_code, "GET", "/api/me");
+  ok("claim code used as token → 401 with guidance", clmLogin.status === 401 && /수령 코드/.test(clmLogin.data.message), JSON.stringify(clmLogin.data));
+  const shortTok = await api("rn_abc", "GET", "/api/me");
+  ok("malformed token → 401 format hint", shortTok.status === 401 && /형식/.test(shortTok.data.message));
+  const messy = await fetch(BASE + "/api/me", { headers: { Authorization: `Bearer "${claimed.token.slice(0, 20)} ${claimed.token.slice(20)}"` } });
+  ok("token with quotes/inner space normalized", messy.status === 200);
+  const dblBearer = await fetch(BASE + "/api/me", { headers: { Authorization: `Bearer Bearer ${claimed.token}` } });
+  ok("double Bearer prefix normalized", dblBearer.status === 200);
+  // 중복 이메일 신청/승인 차단 + 수령 코드 재발급
+  const reapply = await fetch(BASE + "/api/public/requests", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(reqBody) });
+  ok("re-apply with registered email → 409", reapply.status === 409);
+  const req3Res = await fetch(BASE + "/api/public/requests", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: `중복${ts}`, email: `dup-${ts}@example.org`, category_id: catId }) });
+  const req3 = await req3Res.json();
+  const req3Approve = await api(ADMIN, "POST", `/api/admin/requests/${req3.id}/approve`, { email: reqBody.email });
+  ok("approve with duplicate email → 409", req3Approve.status === 409 && req3Approve.data.error === "duplicate_email");
+  const req3Force = await api(ADMIN, "POST", `/api/admin/requests/${req3.id}/approve`, { email: reqBody.email, force: true });
+  ok("approve duplicate email with force → 200", req3Force.status === 200);
+  const reclaimCode = await api(ADMIN, "POST", `/api/admin/requests/${req1.id}/reissue-claim`);
+  ok("admin reissues claim code", reclaimCode.status === 200 && reclaimCode.data.claim_code?.startsWith("clm_") && reclaimCode.data.was_claimed === true, JSON.stringify(reclaimCode.data));
+  const oldClaimGone = await fetch(BASE + `/api/public/requests/${req1.claim_code}`);
+  ok("old claim code no longer resolves", oldClaimGone.status === 404);
+  const reclaim = await fetch(BASE + `/api/public/requests/${reclaimCode.data.claim_code}/claim`, { method: "POST" }).then(async (r) => ({ status: r.status, data: await r.json() }));
+  ok("new claim code yields a new token", reclaim.status === 200 && reclaim.data.token?.startsWith("rn_") && reclaim.data.token !== claimed.token);
+  const bothWork = await api(reclaim.data.token, "GET", "/api/me");
+  ok("reissued token works (old stays valid)", bothWork.status === 200 && (await api(claimed.token, "GET", "/api/me")).status === 200);
+  await api(ADMIN, "PATCH", `/api/admin/users/${req3Force.data.user.id}`, { disabled: true });
+  // 기존 회원 토큰 재발급 (이름+이메일 일치 → 즉시 발급 또는 승인 후 수령)
+  await api(ADMIN, "POST", "/api/admin/locks/clear", {}); // 이전 실행의 잠금 제거
+  const badReissue = await fetch(BASE + "/api/public/reissue", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: "누군가", email: reqBody.email }) });
+  ok("reissue with wrong name → 404", badReissue.status === 404);
+  const tokBefore = await api(ADMIN, "GET", `/api/admin/tokens?user_id=${approve.data.user.id}`);
+  const activeBefore = tokBefore.data.filter((t) => !t.revoked_at).length;
+  const reissueReq = await fetch(BASE + "/api/public/reissue", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: ` ${reqBody.name} `, email: reqBody.email.toUpperCase(), note: "노트북 교체" }) }).then(async (r) => ({ status: r.status, data: await r.json() }));
+  ok("reissue accepted (name/email normalized)", reissueReq.status === 201 && (reissueReq.data.mode === "auto" || reissueReq.data.mode === "approval"), JSON.stringify(reissueReq.data).slice(0, 160));
+  let newTok;
+  if (reissueReq.data.mode === "auto") {
+    ok("auto reissue returns token immediately, revokes existing", reissueReq.data.token?.startsWith("rn_") && reissueReq.data.user_id === approve.data.user.id && reissueReq.data.revoked === activeBefore, JSON.stringify(reissueReq.data).slice(0, 160));
+    newTok = reissueReq.data.token;
+    const keep = await fetch(BASE + "/api/public/reissue", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: reqBody.name, email: reqBody.email, revoke_existing: false }) }).then(async (r) => ({ status: r.status, data: await r.json() }));
+    ok("reissue with revoke_existing=false keeps previous token", keep.status === 201 && keep.data.revoked === 0 && (await api(newTok, "GET", "/api/me")).status === 200);
+    const listNow = await api(ADMIN, "GET", "/api/admin/requests?status=pending");
+    ok("auto reissue creates no pending request", !listNow.data.some((r) => r.kind === "reissue" && r.user_id === approve.data.user.id));
+  } else {
+    const dupReissue = await fetch(BASE + "/api/public/reissue", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: reqBody.name, email: reqBody.email }) });
+    ok("duplicate pending reissue → 400", dupReissue.status === 400);
+    const reissueApprove = await api(ADMIN, "POST", `/api/admin/requests/${reissueReq.data.id}/approve`, { revoke_existing: true });
+    ok("admin approves reissue, revokes existing tokens", reissueApprove.status === 200 && reissueApprove.data.revoked === activeBefore);
+    const reissueClaim = await fetch(BASE + `/api/public/requests/${reissueReq.data.claim_code}/claim`, { method: "POST" }).then(async (r) => ({ status: r.status, data: await r.json() }));
+    ok("reissue claim yields new token", reissueClaim.status === 200 && reissueClaim.data.token?.startsWith("rn_"));
+    newTok = reissueClaim.data.token;
+  }
+  const oldTokDead = await api(claimed.token, "GET", "/api/me");
+  ok("old token revoked after reissue", oldTokDead.status === 401);
+  const reissuedMe = await api(newTok, "GET", "/api/me");
+  ok("reissued token works with same account", reissuedMe.status === 200 && reissuedMe.data.user.id === approve.data.user.id && reissuedMe.data.token_hint);
+  const usersNow = await api(ADMIN, "GET", "/api/admin/users");
+  ok("reissue did not create a new user", usersNow.data.filter((u) => u.email === reqBody.email && !u.disabled_at).length === 1);
+  const act = await api(ADMIN, "GET", "/api/admin/activity?limit=30");
+  ok("reissue logged in activity", act.data.some((a) => /reissue/.test(a.action) && a.actor_id === approve.data.user.id));
+  // 이름·이메일 추측 잠금 (별도 IP 키가 아니라 같은 IP 이므로 4회 더 틀리면 잠김)
+  let lockSt = 0;
+  for (let i = 0; i < 5; i++) lockSt = (await fetch(BASE + "/api/public/reissue", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: "guess" + i, email: reqBody.email }) })).status;
+  ok("5 mismatches → 429 lock", lockSt === 429);
+  const unlock = await api(ADMIN, "POST", "/api/admin/locks/clear", {});
+  ok("admin clears locks", unlock.status === 200 && unlock.data.cleared >= 1);
+  const afterUnlock = await fetch(BASE + "/api/public/reissue", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: "guess-x", email: reqBody.email }) });
+  ok("after unlock mismatch is 404 again (not 429)", afterUnlock.status === 404);
+  await api(ADMIN, "POST", "/api/admin/locks/clear", {});
   const req2Res = await fetch(BASE + "/api/public/requests", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: `거절자${ts}`, category_id: catId }) });
   const req2 = await req2Res.json();
   const reject = await api(ADMIN, "POST", `/api/admin/requests/${req2.id}/reject`, { reason: "소속 확인 불가" });
@@ -284,7 +354,7 @@ const ts = Date.now().toString(36);
   const connectText = await connect.text();
   ok("GET /connect agent guide", connect.status === 200 && connectText.includes("/api/public/requests") && connectText.includes("claude mcp add") && connectText.includes(BASE));
   // 팀 로비 · 가입 흐름
-  const NEW = claimed.token;
+  const NEW = newTok || claimed.token; // 재발급 테스트에서 이전 토큰이 회수되었으므로 새 토큰 사용
   const openCat = await api(ADMIN, "POST", "/api/admin/categories", { name: `smoke-open-${ts}`, join_policy: "open" });
   const closedCat = await api(ADMIN, "POST", "/api/admin/categories", { name: `smoke-closed-${ts}`, join_policy: "closed" });
   ok("categories with join_policy", openCat.data.join_policy === "open" && closedCat.data.join_policy === "closed");
