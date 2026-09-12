@@ -1,109 +1,48 @@
-<!-- 연구노트 시작 안내 (게시판용, 인라인 스타일만 사용) -->
-<div style="max-width:820px;margin:0 auto;padding:28px 24px;background:#faf8f3;color:#1f2937;font-family:Pretendard,'Noto Sans KR','Apple SD Gothic Neo','Malgun Gothic',sans-serif;font-size:15px;line-height:1.7;border:1px solid #e5e0d5;border-radius:12px;">
-
-  <div style="border-left:6px solid #1a2b4c;padding-left:16px;margin-bottom:24px;">
+<!-- 연구노트 시작 안내 (게시판용, 인라인 스타일만 사용. 원본: 같은 이름의 .md, 생성: md2board.py) -->
+<div style="max-width:860px;margin:0 auto;padding:28px 24px;background:#faf8f3;color:#1f2937;font-family:Pretendard,'Noto Sans KR','Apple SD Gothic Neo','Malgun Gothic',sans-serif;font-size:15px;line-height:1.7;border:1px solid #e5e0d5;border-radius:12px;">
+  <div style="border-left:6px solid #1a2b4c;padding-left:16px;margin-bottom:20px;">
     <div style="font-size:12px;letter-spacing:.12em;color:#0f766e;font-weight:700;">HUFS GBT · 연구노트</div>
     <h1 style="margin:4px 0 6px;font-size:26px;color:#1a2b4c;">연구노트 시작 안내</h1>
     <div style="color:#4b5563;">가입 → AI 도구 연결 → 기록. 3단계면 끝납니다.</div>
-    <div style="margin-top:10px;"><a href="https://research-note.juho-2b6.workers.dev" style="display:inline-block;background:#1a2b4c;color:#fff;text-decoration:none;padding:8px 14px;border-radius:6px;font-weight:600;">research-note.juho-2b6.workers.dev</a></div>
   </div>
-
-  <p style="margin:0 0 20px;">여러분이 Claude Code 같은 AI 도구로 연구하면, 그 도구가 <b>진행 상황을 연구노트에 자동으로 기록</b>합니다. 교수는 여러분의 기록을 보고 피드백을 남기고, 발표·보고서는 이 기록을 바탕으로 만듭니다.</p>
-
-  <!-- 1단계 -->
-  <h2 style="font-size:19px;color:#1a2b4c;border-bottom:2px solid #d6d0c4;padding-bottom:6px;margin:28px 0 12px;"><span style="display:inline-block;background:#0f766e;color:#fff;border-radius:50%;width:26px;height:26px;text-align:center;line-height:26px;font-size:14px;margin-right:8px;">1</span>계정(토큰) 신청</h2>
-  <ol style="padding-left:22px;margin:0;">
-    <li>위 주소 접속 → 상단 <b>토큰 신청</b> (<code style="background:#eef2f7;padding:1px 5px;border-radius:4px;">/#/apply</code>)</li>
-    <li>이름, 이메일, 소속을 입력합니다.
-      <ul style="margin:6px 0;padding-left:20px;">
-        <li>대학원 수업 수강생 → <b>2026년2학기 대학원수업</b></li>
-        <li>캡스톤 팀 → <b>2026년 2학기 캡스톤프로젝트</b></li>
-        <li>메모란에 <code style="background:#eef2f7;padding:1px 5px;border-radius:4px;">학번-학과-이름</code>을 적어주면 승인이 빠릅니다.</li>
-      </ul>
-    </li>
-    <li>신청 직후 화면에 <b>수령 코드</b>(<code style="background:#eef2f7;padding:1px 5px;border-radius:4px;">clm_</code>로 시작)가 한 번 나옵니다. <b>반드시 복사해서 보관</b>하세요. 다시 볼 수 없습니다.</li>
-    <li>교수가 승인하면 <code style="background:#eef2f7;padding:1px 5px;border-radius:4px;">/#/claim/수령코드</code> 페이지에서 <b>토큰</b>(<code style="background:#eef2f7;padding:1px 5px;border-radius:4px;">rn_</code>로 시작)을 <b>딱 한 번</b> 받습니다.</li>
-  </ol>
-
-  <div style="margin:14px 0;padding:12px 16px;background:#fff7e6;border:1px solid #f0d9a8;border-left:5px solid #b8860b;border-radius:6px;">
-    <b>⚠️ 가장 흔한 실수</b><br>
-    수령 코드(<code>clm_…</code>)와 토큰(<code>rn_…</code>)은 다릅니다. AI 도구 설정에 넣는 것은 <b><code>rn_</code>로 시작하는 토큰</b>입니다.
-  </div>
-  <div style="margin:14px 0;padding:12px 16px;background:#eef6f5;border:1px solid #bfdcd8;border-left:5px solid #0f766e;border-radius:6px;">
-    <b>토큰을 잃어버렸다면</b><br>
-    새로 신청하지 마세요. 같은 이메일은 중복으로 거부됩니다. <code style="background:#fff;padding:1px 5px;border-radius:4px;">/#/reissue</code>에서 신청할 때 쓴 <b>이름 + 이메일</b>을 입력하면 즉시 재발급됩니다.
-  </div>
-
-  <!-- 2단계 -->
-  <h2 style="font-size:19px;color:#1a2b4c;border-bottom:2px solid #d6d0c4;padding-bottom:6px;margin:28px 0 12px;"><span style="display:inline-block;background:#0f766e;color:#fff;border-radius:50%;width:26px;height:26px;text-align:center;line-height:26px;font-size:14px;margin-right:8px;">2</span>AI 도구에 연결</h2>
-  <p style="margin:0 0 8px;">가장 쉬운 방법은 <b>AI에게 시키는 것</b>입니다. Claude Code(또는 Cursor, Codex CLI, Gemini CLI)를 열고 이렇게 말하세요.</p>
-  <pre style="background:#1a2b4c;color:#e8eef7;padding:14px 16px;border-radius:8px;overflow-x:auto;font-size:13.5px;line-height:1.6;margin:0 0 12px;">https://research-note.juho-2b6.workers.dev/connect 읽고 연구노트에 연결해줘.
+<p style="margin:8px 0;">여러분이 Claude Code 같은 AI 도구로 연구하면, 그 도구가 <b>진행 상황을 연구노트에 자동으로 기록</b>합니다. 교수는 그 기록을 보고 피드백을 남기고, 발표·보고서는 이 기록을 바탕으로 만듭니다. 아래 3단계만 하면 됩니다.</p>
+<h2 style="font-size:19px;color:#1a2b4c;border-bottom:2px solid #d6d0c4;padding-bottom:6px;margin:28px 0 12px;">1단계. 계정(토큰) 신청</h2>
+<ol style="padding-left:22px;margin:4px 0 10px;">
+<li style="margin:2px 0;">상단 <b>토큰 신청</b> (<code style="background:#eef2f7;padding:1px 5px;border-radius:4px;">/#/apply</code>)</li>
+<li style="margin:2px 0;">이름, 이메일, 소속을 입력합니다.</li>
+</ol>
+<ul style="padding-left:22px;margin:4px 0 10px;">
+<li style="margin:2px 0;margin-left:18px;">대학원 수업 수강생 → <b>2026년2학기 대학원수업</b></li>
+<li style="margin:2px 0;margin-left:18px;">캡스톤 팀 → <b>2026년 2학기 캡스톤프로젝트</b></li>
+<li style="margin:2px 0;margin-left:18px;">메모란에 <code style="background:#eef2f7;padding:1px 5px;border-radius:4px;">학번-학과-이름</code>을 적어주면 승인이 빠릅니다.</li>
+</ul>
+<ol start="3" style="padding-left:22px;margin:4px 0 10px;">
+<li style="margin:2px 0;">신청 직후 화면에 <b>수령 코드</b>(<code style="background:#eef2f7;padding:1px 5px;border-radius:4px;">clm_</code>로 시작)가 한 번 나옵니다. <b>반드시 복사해서 보관</b>하세요. 다시 볼 수 없습니다.</li>
+<li style="margin:2px 0;">교수가 승인하면 <code style="background:#eef2f7;padding:1px 5px;border-radius:4px;">/#/claim/수령코드</code> 페이지에서 <b>토큰</b>(<code style="background:#eef2f7;padding:1px 5px;border-radius:4px;">rn_</code>로 시작)을 <b>딱 한 번</b> 받습니다.</li>
+</ol>
+<div style="margin:12px 0;padding:12px 16px;background:#fff7e6;border:1px solid #f0d9a8;border-left:5px solid #b8860b;border-radius:6px;">⚠️ <b>가장 흔한 실수</b>: 수령 코드(<code style="background:#eef2f7;padding:1px 5px;border-radius:4px;">clm_…</code>)와 토큰(<code style="background:#eef2f7;padding:1px 5px;border-radius:4px;">rn_…</code>)은 다릅니다. AI 도구 설정에 넣는 것은 <b><code style="background:#eef2f7;padding:1px 5px;border-radius:4px;">rn_</code>로 시작하는 토큰</b>입니다.</div>
+<div style="margin:12px 0;padding:12px 16px;background:#fff7e6;border:1px solid #f0d9a8;border-left:5px solid #b8860b;border-radius:6px;"><b>토큰을 잃어버렸다면</b> 새로 신청하지 마세요(같은 이메일은 중복으로 거부됩니다). <code style="background:#eef2f7;padding:1px 5px;border-radius:4px;">/#/reissue</code>에서 신청할 때 쓴 <b>이름 + 이메일</b>을 입력하면 즉시 재발급됩니다.</div>
+<h2 style="font-size:19px;color:#1a2b4c;border-bottom:2px solid #d6d0c4;padding-bottom:6px;margin:28px 0 12px;">2단계. AI 도구에 연결</h2>
+<p style="margin:8px 0;">가장 쉬운 방법은 <b>AI에게 시키는 것</b>입니다. Claude Code(또는 Cursor, Codex CLI, Gemini CLI)를 열고 이렇게 말하세요.</p>
+<pre style="background:#1a2b4c;color:#e8eef7;padding:14px 16px;border-radius:8px;overflow-x:auto;font-size:13px;line-height:1.6;margin:8px 0 12px;">https://research-note.juho-2b6.workers.dev/connect 읽고 연구노트에 연결해줘.
 내 토큰은 rn_... 이야.</pre>
-  <p style="margin:0 0 8px;">AI가 그 문서를 읽고 MCP 등록, 사용 지침 저장, 연결 검증까지 알아서 합니다.</p>
-  <p style="margin:12px 0 6px;">직접 하고 싶으면 Claude Code 기준 한 줄입니다.</p>
-  <pre style="background:#1a2b4c;color:#e8eef7;padding:14px 16px;border-radius:8px;overflow-x:auto;font-size:13px;line-height:1.6;margin:0 0 12px;">claude mcp add --scope user --transport http research-note https://research-note.juho-2b6.workers.dev/mcp --header "Authorization: Bearer rn_여기에토큰"</pre>
-  <p style="margin:0;"><b>연결 확인</b>: AI에게 <b>"연구노트 whoami 해줘"</b> 라고 하면 이름과 소속이 나옵니다.</p>
-
-  <!-- 3단계 -->
-  <h2 style="font-size:19px;color:#1a2b4c;border-bottom:2px solid #d6d0c4;padding-bottom:6px;margin:28px 0 12px;"><span style="display:inline-block;background:#0f766e;color:#fff;border-radius:50%;width:26px;height:26px;text-align:center;line-height:26px;font-size:14px;margin-right:8px;">3</span>쓰는 법</h2>
-  <p style="margin:0 0 10px;">연구 폴더에서 AI와 작업한 뒤, 그냥 말로 시키면 됩니다.</p>
-  <table style="width:100%;border-collapse:collapse;font-size:14px;margin:0 0 14px;">
-    <thead>
-      <tr style="background:#1a2b4c;color:#fff;">
-        <th style="text-align:left;padding:8px 10px;border:1px solid #d6d0c4;width:36%;">하고 싶은 것</th>
-        <th style="text-align:left;padding:8px 10px;border:1px solid #d6d0c4;">이렇게 말하세요</th>
-      </tr>
-    </thead>
-    <tbody>
-      <tr><td style="padding:7px 10px;border:1px solid #d6d0c4;">프로젝트 만들기</td><td style="padding:7px 10px;border:1px solid #d6d0c4;background:#fff;">"연구노트에 내 논문 프로젝트 등록해줘"</td></tr>
-      <tr><td style="padding:7px 10px;border:1px solid #d6d0c4;">오늘 진행 기록</td><td style="padding:7px 10px;border:1px solid #d6d0c4;background:#fff;">"오늘 한 일 연구노트에 기록해줘"</td></tr>
-      <tr><td style="padding:7px 10px;border:1px solid #d6d0c4;">단계 정리 갱신</td><td style="padding:7px 10px;border:1px solid #d6d0c4;background:#fff;">"지금까지 결론 정리해서 기획 단계에 반영해줘"</td></tr>
-      <tr><td style="padding:7px 10px;border:1px solid #d6d0c4;">다음 할 일 등록</td><td style="padding:7px 10px;border:1px solid #d6d0c4;background:#fff;">"다음 할 일 연구노트 할일로 등록해줘"</td></tr>
-      <tr><td style="padding:7px 10px;border:1px solid #d6d0c4;">팀 현황 보기</td><td style="padding:7px 10px;border:1px solid #d6d0c4;background:#fff;">"팀 피드 보여줘"</td></tr>
-      <tr><td style="padding:7px 10px;border:1px solid #d6d0c4;">교수 검토 요청</td><td style="padding:7px 10px;border:1px solid #d6d0c4;background:#fff;">"이 기록 검토 요청으로 올려줘"</td></tr>
-      <tr><td style="padding:7px 10px;border:1px solid #d6d0c4;">발표 자료 초안</td><td style="padding:7px 10px;border:1px solid #d6d0c4;background:#fff;">"지난 2주 기록으로 보고서 뽑아줘"</td></tr>
-    </tbody>
-  </table>
-
-  <div style="margin:0 0 6px;"><b>논문 트랙 단계</b></div>
-  <div style="display:flex;flex-wrap:wrap;gap:6px;margin:0 0 10px;">
-    <span style="background:#1a2b4c;color:#fff;padding:4px 10px;border-radius:14px;font-size:13px;">기획</span><span style="color:#9ca3af;">→</span>
-    <span style="background:#1a2b4c;color:#fff;padding:4px 10px;border-radius:14px;font-size:13px;">리서치</span><span style="color:#9ca3af;">→</span>
-    <span style="background:#1a2b4c;color:#fff;padding:4px 10px;border-radius:14px;font-size:13px;">관련기법</span><span style="color:#9ca3af;">→</span>
-    <span style="background:#1a2b4c;color:#fff;padding:4px 10px;border-radius:14px;font-size:13px;">실험결과</span><span style="color:#9ca3af;">→</span>
-    <span style="background:#1a2b4c;color:#fff;padding:4px 10px;border-radius:14px;font-size:13px;">논문작성</span><span style="color:#9ca3af;">→</span>
-    <span style="background:#1a2b4c;color:#fff;padding:4px 10px;border-radius:14px;font-size:13px;">검토·투고</span>
-  </div>
-  <div style="margin:0 0 6px;"><b>캡스톤 트랙 단계</b></div>
-  <div style="display:flex;flex-wrap:wrap;gap:6px;margin:0 0 18px;">
-    <span style="background:#0f766e;color:#fff;padding:4px 10px;border-radius:14px;font-size:13px;">주제·문제 발견</span><span style="color:#9ca3af;">→</span>
-    <span style="background:#0f766e;color:#fff;padding:4px 10px;border-radius:14px;font-size:13px;">시장·사업모델</span><span style="color:#9ca3af;">→</span>
-    <span style="background:#0f766e;color:#fff;padding:4px 10px;border-radius:14px;font-size:13px;">MVP 빌드·배포</span><span style="color:#9ca3af;">→</span>
-    <span style="background:#0f766e;color:#fff;padding:4px 10px;border-radius:14px;font-size:13px;">피드백·개선</span><span style="color:#9ca3af;">→</span>
-    <span style="background:#0f766e;color:#fff;padding:4px 10px;border-radius:14px;font-size:13px;">사업성·최종보고</span><span style="color:#9ca3af;">→</span>
-    <span style="background:#0f766e;color:#fff;padding:4px 10px;border-radius:14px;font-size:13px;">최종 발표</span>
-  </div>
-
-  <!-- 원칙 -->
-  <h2 style="font-size:19px;color:#1a2b4c;border-bottom:2px solid #d6d0c4;padding-bottom:6px;margin:28px 0 12px;">기록 원칙</h2>
-  <ul style="padding-left:22px;margin:0;">
-    <li><b>매주 최소 1건</b>은 남기세요. 기록 충실도가 평가에 들어갑니다.</li>
-    <li>한 기록에 한 주제. 실험이 두 개면 기록도 두 개입니다.</li>
-    <li><b>잘 안 된 실험도 기록</b>하세요. 원인 가설까지 적으면 그게 곧 논문의 한 절이 됩니다.</li>
-    <li>수치는 설정값(데이터 크기, 모델, 시드, 반복 수)과 함께 적습니다.</li>
-    <li>AI가 지어낸 내용이 들어가지 않도록, 기록 올리기 전에 한 번 읽어보세요.</li>
-  </ul>
-
-  <!-- 문제 해결 -->
-  <h2 style="font-size:19px;color:#1a2b4c;border-bottom:2px solid #d6d0c4;padding-bottom:6px;margin:28px 0 12px;">막히면</h2>
-  <table style="width:100%;border-collapse:collapse;font-size:14px;">
-    <tbody>
-      <tr><td style="padding:7px 10px;border:1px solid #d6d0c4;width:40%;background:#fff;">"유효하지 않은 토큰"</td><td style="padding:7px 10px;border:1px solid #d6d0c4;"><code>rn_</code>이 아닌 값을 넣었거나 토큰이 회수된 경우. <code>/#/reissue</code>로 재발급.</td></tr>
-      <tr><td style="padding:7px 10px;border:1px solid #d6d0c4;background:#fff;">"잠겼습니다"</td><td style="padding:7px 10px;border:1px solid #d6d0c4;">5회 이상 틀리면 10분간 잠깁니다. 기다렸다 다시 하거나 교수에게 연락.</td></tr>
-      <tr><td style="padding:7px 10px;border:1px solid #d6d0c4;background:#fff;">AI가 whoami를 못 찾음</td><td style="padding:7px 10px;border:1px solid #d6d0c4;">MCP 등록 후 AI 도구를 한 번 재시작하세요.</td></tr>
-      <tr><td style="padding:7px 10px;border:1px solid #d6d0c4;background:#fff;">그 외</td><td style="padding:7px 10px;border:1px solid #d6d0c4;">화면 캡처와 함께 알려주세요.</td></tr>
-    </tbody>
-  </table>
-
+<p style="margin:8px 0;">AI가 그 문서를 읽고 MCP 등록, 사용 지침 저장, 연결 검증까지 알아서 합니다.</p>
+<p style="margin:8px 0;">직접 하고 싶으면 Claude Code 기준 한 줄입니다.</p>
+<pre style="background:#1a2b4c;color:#e8eef7;padding:14px 16px;border-radius:8px;overflow-x:auto;font-size:13px;line-height:1.6;margin:8px 0 12px;">claude mcp add --scope user --transport http research-note https://research-note.juho-2b6.workers.dev/mcp --header &quot;Authorization: Bearer rn_여기에토큰&quot;</pre>
+<p style="margin:8px 0;"><b>연결 확인</b>: AI에게 <b>"연구노트 whoami 해줘"</b> 라고 하면 이름과 소속이 나옵니다.</p>
+<h2 style="font-size:19px;color:#1a2b4c;border-bottom:2px solid #d6d0c4;padding-bottom:6px;margin:28px 0 12px;">3단계. 쓰는 법</h2>
+<p style="margin:8px 0;">연구 폴더에서 AI와 작업한 뒤, 그냥 말로 시키면 됩니다.</p>
+<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:14px;margin:8px 0 14px;"><thead><tr style="background:#1a2b4c;color:#fff;"><th style="text-align:left;padding:8px 10px;border:1px solid #d6d0c4;">하고 싶은 것</th><th style="text-align:left;padding:8px 10px;border:1px solid #d6d0c4;">이렇게 말하세요</th></tr></thead><tbody><tr><td style="padding:7px 10px;border:1px solid #d6d0c4;background:#fff;vertical-align:top;">프로젝트 만들기</td><td style="padding:7px 10px;border:1px solid #d6d0c4;background:#fff;vertical-align:top;">"연구노트에 내 논문 프로젝트 등록해줘"</td></tr><tr><td style="padding:7px 10px;border:1px solid #d6d0c4;background:#fff;vertical-align:top;">오늘 진행 기록</td><td style="padding:7px 10px;border:1px solid #d6d0c4;background:#fff;vertical-align:top;">"오늘 한 일 연구노트에 기록해줘"</td></tr><tr><td style="padding:7px 10px;border:1px solid #d6d0c4;background:#fff;vertical-align:top;">단계 정리 갱신</td><td style="padding:7px 10px;border:1px solid #d6d0c4;background:#fff;vertical-align:top;">"지금까지 결론 정리해서 기획 단계에 반영해줘"</td></tr><tr><td style="padding:7px 10px;border:1px solid #d6d0c4;background:#fff;vertical-align:top;">다음 할 일 등록</td><td style="padding:7px 10px;border:1px solid #d6d0c4;background:#fff;vertical-align:top;">"다음 할 일 연구노트 할일로 등록해줘"</td></tr><tr><td style="padding:7px 10px;border:1px solid #d6d0c4;background:#fff;vertical-align:top;">공지 확인</td><td style="padding:7px 10px;border:1px solid #d6d0c4;background:#fff;vertical-align:top;">"연구노트 공지 읽어줘"</td></tr><tr><td style="padding:7px 10px;border:1px solid #d6d0c4;background:#fff;vertical-align:top;">팀 현황 보기</td><td style="padding:7px 10px;border:1px solid #d6d0c4;background:#fff;vertical-align:top;">"팀 피드 보여줘"</td></tr><tr><td style="padding:7px 10px;border:1px solid #d6d0c4;background:#fff;vertical-align:top;">교수 검토 요청</td><td style="padding:7px 10px;border:1px solid #d6d0c4;background:#fff;vertical-align:top;">"이 기록 검토 요청으로 올려줘"</td></tr><tr><td style="padding:7px 10px;border:1px solid #d6d0c4;background:#fff;vertical-align:top;">발표 자료 초안</td><td style="padding:7px 10px;border:1px solid #d6d0c4;background:#fff;vertical-align:top;">"지난 2주 기록으로 보고서 뽑아줘"</td></tr></tbody></table></div>
+<p style="margin:8px 0;"><b>논문 트랙 단계</b>: 기획 → 리서치 → 관련기법 → 실험결과 → 논문작성 → 검토·투고<br><b>캡스톤 트랙 단계</b>: 주제·문제 발견 → 시장·사업모델 → MVP 빌드·배포 → 피드백·개선 → 사업성·최종보고 → 최종 발표</p>
+<h2 style="font-size:19px;color:#1a2b4c;border-bottom:2px solid #d6d0c4;padding-bottom:6px;margin:28px 0 12px;">기록 원칙</h2>
+<ul style="padding-left:22px;margin:4px 0 10px;">
+<li style="margin:2px 0;"><b>매주 최소 1건</b>은 남기세요. 기록 충실도가 평가에 들어갑니다.</li>
+<li style="margin:2px 0;">한 기록에 한 주제. 실험이 두 개면 기록도 두 개입니다.</li>
+<li style="margin:2px 0;"><b>잘 안 된 실험도 기록</b>하세요. 원인 가설까지 적으면 그게 곧 논문의 한 절이 됩니다.</li>
+<li style="margin:2px 0;">수치는 설정값(데이터 크기, 모델, 시드, 반복 수)과 함께 적습니다.</li>
+<li style="margin:2px 0;">AI가 지어낸 내용이 들어가지 않도록, 기록 올리기 전에 한 번 읽어보세요.</li>
+</ul>
+<h2 style="font-size:19px;color:#1a2b4c;border-bottom:2px solid #d6d0c4;padding-bottom:6px;margin:28px 0 12px;">막히면</h2>
+<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:14px;margin:8px 0 14px;"><thead><tr style="background:#1a2b4c;color:#fff;"><th style="text-align:left;padding:8px 10px;border:1px solid #d6d0c4;">증상</th><th style="text-align:left;padding:8px 10px;border:1px solid #d6d0c4;">조치</th></tr></thead><tbody><tr><td style="padding:7px 10px;border:1px solid #d6d0c4;background:#fff;vertical-align:top;">"유효하지 않은 토큰"</td><td style="padding:7px 10px;border:1px solid #d6d0c4;background:#fff;vertical-align:top;"><code style="background:#eef2f7;padding:1px 5px;border-radius:4px;">rn_</code>이 아닌 값을 넣었거나 토큰이 회수된 경우. <code style="background:#eef2f7;padding:1px 5px;border-radius:4px;">/#/reissue</code>로 재발급</td></tr><tr><td style="padding:7px 10px;border:1px solid #d6d0c4;background:#fff;vertical-align:top;">"잠겼습니다"</td><td style="padding:7px 10px;border:1px solid #d6d0c4;background:#fff;vertical-align:top;">5회 이상 틀리면 10분간 잠깁니다. 기다렸다 다시 하거나 교수에게 연락</td></tr><tr><td style="padding:7px 10px;border:1px solid #d6d0c4;background:#fff;vertical-align:top;">AI가 whoami를 못 찾음</td><td style="padding:7px 10px;border:1px solid #d6d0c4;background:#fff;vertical-align:top;">MCP 등록 후 AI 도구를 한 번 재시작</td></tr><tr><td style="padding:7px 10px;border:1px solid #d6d0c4;background:#fff;vertical-align:top;">그 외</td><td style="padding:7px 10px;border:1px solid #d6d0c4;background:#fff;vertical-align:top;">화면 캡처와 함께 알려주세요</td></tr></tbody></table></div>
   <div style="margin-top:26px;padding-top:12px;border-top:1px solid #d6d0c4;font-size:12.5px;color:#6b7280;">한국외국어대학교 Global Business &amp; Technology · 연구노트 · <a href="https://research-note.juho-2b6.workers.dev" style="color:#0f766e;">research-note.juho-2b6.workers.dev</a></div>
 </div>
