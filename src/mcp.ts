@@ -20,6 +20,7 @@ import * as F from "./services/feed";
 import * as R from "./services/report";
 import * as TM from "./services/teams";
 import * as EV from "./services/evaluations";
+import * as N from "./services/notices";
 import { SKILL_MD, SKILL_SHORT } from "./skill";
 
 const SERVER_NAME = "research-note";
@@ -42,7 +43,7 @@ interface ToolDef {
 }
 
 /** 핀 열람 세션(읽기 전용)에서도 호출할 수 있는 도구. 나머지는 열람 모드에서 isError */
-const READONLY_TOOLS = new Set(["whoami", "list_projects", "get_project", "list_evaluations", "list_entries", "get_entry", "list_tasks", "team_feed", "team_overview", "list_teams", "search", "get_report"]);
+const READONLY_TOOLS = new Set(["whoami", "list_projects", "get_project", "list_evaluations", "list_entries", "get_entry", "list_tasks", "team_feed", "team_overview", "list_teams", "search", "get_report", "list_notices"]);
 
 const stageEnum = {
   type: "string",
@@ -417,6 +418,31 @@ const TOOLS: ToolDef[] = [
     handler: async (env, ctx, a) => {
       const e = await E.setReviewStatus(env, ctx, String(a.entry_id), a.status, a.note);
       return { text: `검토 상태: ${e.title} → ${e.review_status}`, data: e };
+    },
+  },
+  {
+    name: "list_notices",
+    title: "공지 읽기",
+    description: "관리자·리드가 올린 공지(전체 공지 + 소속 팀 공지)를 읽는다. 발표 준비 요령·제출 형식·일정 같은 수업/연구실 안내가 여기 있으므로 세션 시작 시 한 번 읽고, 기록·발표 준비를 도울 때 공지의 요구사항을 따른다. category_id 로 한 팀만.",
+    inputSchema: { type: "object", properties: { category_id: idProp("카테고리 ID (생략 시 전체 공지 + 소속 팀 전체)"), limit: { type: "integer", minimum: 1, maximum: 200, description: "기본 20" } }, additionalProperties: false },
+    handler: async (env, ctx, a) => {
+      const rows = await N.listNotices(env, ctx, { category_id: s(a.category_id), limit: a.limit ?? 20 });
+      return { text: N.noticesMarkdown(rows), data: { notices: rows } };
+    },
+  },
+  {
+    name: "post_notice",
+    title: "공지 올리기 (관리자·리드)",
+    description: "팀 공지(category_id 지정: 관리자 또는 그 팀 리드) 또는 전체 공지(category_id 생략: 관리자만)를 올린다. 본문은 마크다운. 사용자가 명시적으로 공지를 올리라고 했을 때만 호출.",
+    inputSchema: {
+      type: "object",
+      properties: { category_id: idProp("팀(카테고리) ID. 생략 시 전체 공지"), title: { type: "string", maxLength: 200 }, content: { type: "string", description: "마크다운 본문" }, pinned: { type: "boolean", description: "상단 고정" } },
+      required: ["title", "content"],
+      additionalProperties: false,
+    },
+    handler: async (env, ctx, a) => {
+      const n = await N.createNotice(env, ctx, { category_id: s(a.category_id), title: a.title, content: a.content, pinned: a.pinned });
+      return { text: `공지를 올렸습니다: ${n.title} (${n.id}) · ${n.category_name ?? "전체 공지"}${n.pinned ? " · 고정" : ""}`, data: n };
     },
   },
   {

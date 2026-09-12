@@ -265,3 +265,18 @@ textarea.input.mono{font-family:var(--mono);font-size:13px}
 @media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}*{transition:none!important;animation:none!important}}
 @media (max-width:640px){.wrap{padding:16px 14px 80px}.topbar .inner{padding:8px 14px}.who{display:none}.nav a{padding:5px 8px;font-size:12.5px}}
 @media print{.topbar,.btn,.tabs,.cmt-form{display:none!important}body{background:#fff}}
+
+/* ---------- 공지 ---------- */
+.notice-wrap{border-left:4px solid var(--gold)}
+.notice{padding:12px 16px}
+.notice.pinned{border-color:var(--goldlight);background:#FFFDF6}
+.notice.archived{opacity:.6}
+.notice-title{font-size:15px;color:var(--navy)}
+.notice-body{margin-top:10px;padding-top:10px;border-top:1px dashed var(--rule)}
+.notice-toggle{border:1px solid var(--rule);background:#fff;border-radius:7px;padding:3px 9px;font-size:12px;color:var(--muted);cursor:pointer}
+.notice-toggle:hover{border-color:var(--mint);color:var(--teal)}
+.notice-preview{border:1px solid var(--rule);border-radius:9px;padding:12px 14px;background:#fff;max-height:420px;overflow:auto}
+.notice-strip{display:flex;flex-wrap:wrap;gap:8px 18px;margin:0 0 14px;padding:9px 14px;background:#FFF8E6;border:1px solid #F0DDA8;border-left:4px solid var(--gold);border-radius:10px;font-size:13.5px}
+.notice-strip a{color:var(--ink);display:inline-flex;align-items:center;gap:6px}
+.notice-strip a:hover{text-decoration:none;color:var(--teal)}
+label.check.small{font-size:12.5px;color:var(--muted)}

@@ -65,6 +65,7 @@ description: 연구노트(Research Note) 플랫폼에 논문 진행 상황을 �
 ## 조회·검토
 
 - 팀 찾기·가입: `list_teams`(전체 팀·가입 정책·내 상태) → 사용자가 원하면 `join_team(category_id=<list_teams 결과의 id>, message?)`(즉시 가입 또는 리드 승인 요청). 팀 = 카테고리이며 인자 이름은 `category_id` 다(`team_id` 아님). 한 사람이 여러 팀에 속할 수 있다.
+- 공지: `list_notices`(전체 공지 + 소속 팀 공지). **세션 시작 시 한 번 읽는다.** 발표 형식(시간·장수)·제출 요령·기록 요구사항이 있으면 발표 자료·기록·보고서를 만들 때 그대로 따른다. 사용자가 관리자·리드이고 명시적으로 원할 때만 `post_notice`.
 - 팀 상황: `team_overview`(구성원·프로젝트·검토 대기), `team_feed`(최근 활동)
 - 특정 기록 읽기: `list_entries` → `get_entry` (코멘트 포함)
 - 팀원 기록에 의견: `add_comment`. 리드/관리자만 `kind: approve | request_changes`

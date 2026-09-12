@@ -11,6 +11,7 @@ import * as S from "./services/signup";
 import * as TM from "./services/teams";
 import * as EV from "./services/evaluations";
 import * as PV from "./services/publicview";
+import * as N from "./services/notices";
 import { logActivity } from "./lib/db";
 
 type Handler = (req: Request, env: Env, ctx: AuthContext, params: Record<string, string>, url: URL) => Promise<Response>;
@@ -176,6 +177,16 @@ add("POST", "/api/join-requests/:id/approve", async (req, env, ctx, p) => {
 add("POST", "/api/join-requests/:id/reject", async (req, env, ctx, p) => {
   const b = await readJson<{ note?: unknown }>(req);
   return json(await TM.decideJoinRequest(env, ctx, p.id, false, b.note));
+});
+
+// ---------- 공지 (전체: 관리자 / 팀: 관리자·리드 작성, 구성원·열람자 읽기) ----------
+add("GET", "/api/notices", async (_r, env, ctx, _p, url) => json(await N.listNotices(env, ctx, { category_id: q(url, "category_id"), limit: q(url, "limit"), include_archived: q(url, "archived") === "1" })));
+add("POST", "/api/notices", async (req, env, ctx) => json(await N.createNotice(env, ctx, await readJson(req)), 201));
+add("GET", "/api/notices/:id", async (_r, env, ctx, p) => json(await N.getNotice(env, ctx, p.id)));
+add("PATCH", "/api/notices/:id", async (req, env, ctx, p) => json(await N.updateNotice(env, ctx, p.id, await readJson(req))));
+add("DELETE", "/api/notices/:id", async (_r, env, ctx, p) => {
+  await N.archiveNotice(env, ctx, p.id);
+  return json({ ok: true });
 });
 
 // ---------- 피드 / 검색 ----------

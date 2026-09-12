@@ -95,6 +95,18 @@
 | POST | `/api/join-requests/:id/approve` | `{note, role: member|lead}` (리드·관리자) |
 | POST | `/api/join-requests/:id/reject` | `{note}` |
 
+## 공지 (notices)
+
+관리자·리드가 올리는 안내문(마크다운). 홈·팀 페이지 [공지] 탭·MCP `list_notices` 로 읽는다. `category_id` 가 NULL 이면 전체 공지.
+
+| Method | Path | Body / 설명 |
+|---|---|---|
+| GET | `/api/notices?category_id=&limit=&archived=1` | `category_id` 지정: 그 팀 공지 + 전체 공지 (구성원·열람자). 생략: 전체 공지 + 소속 팀 전체. 고정(pinned) 먼저, 최신순. `archived=1` 은 관리 권한자에게만 내린 공지 포함 |
+| POST | `/api/notices` | `{category_id?, title, content, pinned?}` → 201. 전체 공지(`category_id` 생략)는 관리자, 팀 공지는 관리자 또는 그 팀 리드 |
+| GET | `/api/notices/:id` | 한 건 (`can_edit` 포함). 내린 공지는 관리 권한자만 |
+| PATCH | `/api/notices/:id` | `{title?, content?, pinned?, archived?}` (archived=true 내리기 / false 복원) |
+| DELETE | `/api/notices/:id` | 내리기 (소프트 삭제) |
+
 ## 관리자 (`role=admin` 필요)
 
 | Method | Path | Body / 설명 |

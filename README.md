@@ -145,7 +145,7 @@ Cursor · Claude Desktop(mcp-remote) · Codex CLI · Gemini CLI 설정 예시는
 
 ### MCP 도구 목록
 
-`whoami` `list_projects` `get_project` `create_project` `update_project`(협업자 포함) `log_progress` `list_entries` `get_entry` `update_entry` `update_stage` `advance_stage` `list_tasks` `add_task` `update_task` `add_comment` `set_review` `list_evaluations` `add_evaluation` `respond_evaluation` `team_feed` `team_overview` `list_teams` `join_team` `search` `get_report` + 프롬프트 `log_today` `weekly_review` `research_note_guide` + 리소스 `research-note://guide`, `research-note://me`, `research-note://project/{id}`
+`whoami` `list_projects` `get_project` `create_project` `update_project`(협업자 포함) `log_progress` `list_entries` `get_entry` `update_entry` `update_stage` `advance_stage` `list_tasks` `add_task` `update_task` `add_comment` `set_review` `list_evaluations` `add_evaluation` `respond_evaluation` `list_notices` `post_notice` `team_feed` `team_overview` `list_teams` `join_team` `search` `get_report` + 프롬프트 `log_today` `weekly_review` `research_note_guide` + 리소스 `research-note://guide`, `research-note://me`, `research-note://project/{id}`
 
 ## 보고서
 
@@ -169,6 +169,9 @@ Cursor · Claude Desktop(mcp-remote) · Codex CLI · Gemini CLI 설정 예시는
 | 승인 / 수정 요청 | ✓ | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ |
 | 평가 작성 (루브릭·피드백) | ✓ | ✓ | ✗ | ✗ | ✓ | ✗ | ✗ |
 | 평가에 답변 | ✓ | ✓ | ✓ | ✗ | ✗ | ✗ | ✗ |
+| 공지 올리기·수정·내리기 (팀) | ✓ | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ |
+| 전체 공지 | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
+| 공지 읽기 | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | 전체 공지만 |
 | 할 일 추가·갱신 | ✓ | ✓ | ✓ | ✓ | ✗ | ✗ | ✗ |
 | 카테고리·연구원·토큰 관리 | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
 

@@ -150,6 +150,7 @@ export const ACTION_LABEL = {
   "team.join": "팀 가입", "team.join_request": "팀 가입 요청", "team.join_approve": "가입 승인", "team.join_reject": "가입 거절", "team.leave": "팀 탈퇴",
   "evaluation.create": "평가 작성", "evaluation.update": "평가 수정", "evaluation.delete": "평가 삭제", "evaluation.respond": "평가 답변",
   "viewer.login": "핀 열람 시작", "signup.reissue": "수령 코드 재발급", "signup.reissue_request": "토큰 재발급 요청", "signup.reissue_approve": "토큰 재발급 승인", "token.reissue": "본인 토큰 재발급", "admin.locks_clear": "잠금 해제",
+  "notice.create": "공지 게시", "notice.update": "공지 수정", "notice.archive": "공지 내림", "notice.restore": "공지 복원",
 };
 /** 트랙 정의 {paper:{label,noun,stages[],rubric[]}, capstone:{...}} */
 export function tracks() { return state.me?.tracks || {}; }

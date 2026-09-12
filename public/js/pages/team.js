@@ -1,16 +1,17 @@
 import { state, get, post, h, mount, pill, avatar, stages, stageLabel, fmtRel, fmtDT, daysSince, openReport, downloadFile, input, textarea, select, field, modal, daysAgo, today, toast, errToast, STATUS_LABEL } from "../core.js";
 import { projectCard, feedList, newProjectDialog } from "./home.js";
+import { teamNoticeView, pinnedStrip } from "./notices.js";
 
 export async function render(container, categoryId, query) {
   mount(container, h("div.loading", h("span.spinner"), " 불러오는 중…"));
-  const [detail, board] = await Promise.all([get(`/api/categories/${categoryId}`), get(`/api/categories/${categoryId}/board`)]);
+  const [detail, board, notices] = await Promise.all([get(`/api/categories/${categoryId}`), get(`/api/categories/${categoryId}/board`), get(`/api/notices?category_id=${encodeURIComponent(categoryId)}&limit=50`).catch(() => [])]);
   const cat = detail.category;
   const view = query.view || "board";
   const me = state.me;
 
   const viewSeg = h("div.seg");
   const jrCount = (detail.join_requests || []).length;
-  for (const [k, l] of [["board", "보드"], ["list", "목록"], ["members", `구성원${jrCount ? " · 가입 요청 " + jrCount : ""}`], ["review", `검토 대기${detail.review_queue.length ? " " + detail.review_queue.length : ""}`], ["feed", "활동"]]) {
+  for (const [k, l] of [["board", "보드"], ["list", "목록"], ["notices", `공지${notices.length ? " " + notices.length : ""}`], ["members", `구성원${jrCount ? " · 가입 요청 " + jrCount : ""}`], ["review", `검토 대기${detail.review_queue.length ? " " + detail.review_queue.length : ""}`], ["feed", "활동"]]) {
     viewSeg.append(h("button", { class: view === k ? "active" : "", onclick: () => (location.hash = `#/team/${categoryId}?view=${k}`) }, l));
   }
 
@@ -32,9 +33,10 @@ export async function render(container, categoryId, query) {
   else if (view === "list") body = renderList(detail.projects);
   else if (view === "members") body = renderMembers(detail, categoryId, container, query);
   else if (view === "review") body = renderReview(detail.review_queue);
+  else if (view === "notices") body = await teamNoticeView(detail, categoryId);
   else body = h("div.card", feedList(detail.activity));
 
-  mount(container, header, body);
+  mount(container, header, view === "notices" ? null : pinnedStrip(notices, categoryId), body);
 }
 
 function renderBoard(board) {

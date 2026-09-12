@@ -93,6 +93,8 @@ http_headers = { Authorization = "Bearer rn_xxx" }
 | `list_tasks` / `add_task` / `update_task` | `project_id` / `task_id` … | 할 일 |
 | `add_comment` | `entry_id, content, kind?` | 코멘트 (리드: approve / request_changes) |
 | `set_review` | `entry_id, status, note?` | 검토 상태 |
+| `list_notices` | `category_id?, limit?` | 관리자·리드의 공지 (전체 + 소속 팀). **세션 시작 시 한 번 읽고** 발표 형식·제출 요령 같은 요구사항을 따른다 |
+| `post_notice` | `category_id?, title, content, pinned?` | 공지 올리기 (팀: 관리자·리드 / 전체: 관리자). 명시적 요청 시만 |
 | `team_feed` | `category_id?, limit?` | 팀 활동 |
 | `team_overview` | `category_id` | 구성원·프로젝트·검토 대기 |
 | `list_evaluations` | `project_id` | 평가자들의 루브릭 점수·피드백과 팀 답변 (단계별 평균) |

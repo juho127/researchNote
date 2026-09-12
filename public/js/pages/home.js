@@ -1,4 +1,5 @@
 import { state, get, post, h, mount, pill, avatar, stageLabel, stageSelect, projectProgress, fmtRel, daysSince, today, input, textarea, field, select, toast, errToast, loadMe, STATUS_LABEL, ACTION_LABEL, fmtDT, modal } from "../core.js";
+import { homeNoticeCard } from "./notices.js";
 
 export function projectCard(p, { showOwner = true, compact = false } = {}) {
   const stale = daysSince(p.last_entry_at);
@@ -79,10 +80,11 @@ export function quickLogForm(projects, { onSaved, defaultProject } = {}) {
 export async function render(container) {
   mount(container, h("div.loading", h("span.spinner"), " 불러오는 중…"));
   const me = await loadMe();
-  const [feed, myEntries, reviewMine] = await Promise.all([
+  const [feed, myEntries, reviewMine, noticeCard] = await Promise.all([
     get("/api/feed?limit=25"),
     get(`/api/entries?mine=1&since=${encodeURIComponent(daysAgoStr(7))}&brief=1&limit=100`),
     get("/api/entries?review_status=requested&brief=1&limit=50"),
+    homeNoticeCard(me),
   ]);
   const mine = me.my_projects.filter((p) => p.status !== "archived");
   const active = mine.filter((p) => p.status === "active");
@@ -104,6 +106,7 @@ export async function render(container) {
       h("p.sub", me.memberships.length ? [`소속: ${me.memberships.map((m) => m.category_name + (m.role === "lead" ? " (리드)" : "")).join(" · ")} · `, h("a", { href: "#/lobby" }, "팀 로비")] : ["아직 소속 팀이 없습니다. ", h("a", { href: "#/lobby" }, "팀 로비"), "에서 팀을 찾아 가입하세요."]),
       me.pending_joins ? h("p.small", { style: { marginTop: "8px" } }, h("a.btn.sm", { href: "#/lobby" }, `가입 요청 ${me.pending_joins}건 대기 (리드 승인 필요)`)) : null),
     h("div.grid.c4", stats.map(([n, l]) => h("div.card.stat", h("div.n", String(n)), h("div.l", l)))),
+    noticeCard ? h("div", { style: { marginTop: "18px" } }, noticeCard) : null,
     h("div.two", { style: { marginTop: "18px" } },
       h("div.stack",
         quickWrap,
