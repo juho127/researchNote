@@ -165,7 +165,7 @@ async function categories(body) {
       h("td", h("code", c.id)), h("td.small", c.description || ""), h("td", pill((POL[c.join_policy] || [c.join_policy, ""])[0], (POL[c.join_policy] || ["", ""])[1] + " sm")), h("td", pubCell(c)), h("td.small", c.lead_names || "-"), h("td", String(c.member_count)), h("td", String(c.project_count)),
       h("td.right", h("button.btn.xs", { onclick: () => categoryDialog(c, body) }, "수정")))))));
   const viewUrl = `${location.origin}/#/view`;
-  mount(body, h("div.row.between", { style: { marginBottom: "12px" } }, h("p.small.muted", "카테고리 = 연구 그룹/팀. 같은 카테고리 구성원끼리 프로젝트를 공유·검토합니다. 공개 열람을 켜고 핀을 정하면 외부인이 ", h("a", { href: "#/view", target: "_blank" }, viewUrl), " 에서 핀만으로 읽기 전용 열람(24시간)을 할 수 있습니다."), h("button.btn.primary", { onclick: () => categoryDialog(null, body) }, "+ 카테고리")), cats.length ? table : h("div.empty", "카테고리를 만들어 연구원을 배정하세요"));
+  mount(body, h("div.row.between", { style: { marginBottom: "12px" } }, h("p.small.muted", "카테고리 = 연구 그룹/팀. 같은 카테고리 구성원끼리 프로젝트를 공유·검토합니다. 공개 열람을 켜고 핀을 정하면 외부인이 ", h("a", { href: "#/view", target: "_blank" }, viewUrl), " 에서 핀만으로 읽기 전용 열람을 할 수 있습니다 (세션 만료는 wrangler 설정 VIEWER_SESSION_UNTIL, 미설정 시 24시간)."), h("button.btn.primary", { onclick: () => categoryDialog(null, body) }, "+ 카테고리")), cats.length ? table : h("div.empty", "카테고리를 만들어 연구원을 배정하세요"));
 }
 function categoryDialog(c, body) {
   const name = input({ value: c?.name || "", placeholder: "예: LLM 응용, 시계열 예측, 인과추론" });
@@ -181,7 +181,7 @@ function categoryDialog(c, body) {
   const pinHelp = h("span.help", c?.pin_set ? `핀 설정됨${c.pin_updated_at ? ` (${fmtRel(c.pin_updated_at)} 변경)` : ""} · 핀을 바꾸거나 해제하면 현재 열람 세션은 모두 끊깁니다` : "핀이 없으면 공개로 표시되어도 열람할 수 없습니다");
   isPublic.addEventListener("change", () => { pin.disabled = !isPublic.checked; clearPin.disabled = !isPublic.checked || !c?.pin_set; });
   const publicBox = h("div.card.pad-s", { style: { background: "var(--wash)" } },
-    h("label.check", isPublic, h("b", "공개 열람 허용"), h("span.small.muted", " — 토큰·가입 없이 핀만으로 읽기 전용 열람 (세션 24시간, 5회 오류 시 10분 잠금)")),
+    h("label.check", isPublic, h("b", "공개 열람 허용"), h("span.small.muted", " — 토큰·가입 없이 핀만으로 읽기 전용 열람 (5회 오류 시 10분 잠금)")),
     h("div.form-grid", { style: { marginTop: "8px" } }, h("label.field", h("span", c?.pin_set ? "새 핀 (비우면 유지)" : "핀"), pin, pinHelp), c?.pin_set ? h("label.check", { style: { alignSelf: "end" } }, clearPin, "핀 해제 (열람 중단)") : null),
     h("p.help", { style: { margin: "6px 0 0" } }, "열람자는 프로젝트·기록·단계 정리·공개된 평가·보고서를 볼 수 있고, 구성원 이메일·가입 요청·초안 평가는 보지 못합니다. 열람 페이지: ", h("code", `${location.origin}/#/view`)),
   );

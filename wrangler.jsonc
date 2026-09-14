@@ -33,7 +33,9 @@
     // 공개 토큰 발급 신청 페이지(/#/apply) 허용 여부. "false" 면 관리자 직접 등록만 가능
     "SIGNUP_ENABLED": "true",
     // 토큰 재발급(/#/reissue): "true" 면 등록한 이름+이메일이 일치할 때 즉시 발급, "false" 면 관리자 승인 후 수령
-    "REISSUE_AUTO": "true"
+    "REISSUE_AUTO": "true",
+    // 핀 열람 세션 만료일 (YYYY-MM-DD, APP_TZ 기준 그날 자정까지). 비우거나 지난 날짜면 24시간 세션
+    "VIEWER_SESSION_UNTIL": "2026-12-31"
   },
   "observability": { "enabled": true }
   // 비밀값(소스에 두지 않음):

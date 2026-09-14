@@ -4,6 +4,7 @@ import { newId, newClaimCode, sha256Hex, tokenHint } from "../lib/id";
 import { nowIso } from "../lib/time";
 import { logActivity } from "../lib/db";
 import { createUser, issueToken, listCategories, listUsers } from "./admin";
+import { viewerUntil } from "./publicview";
 
 export interface SignupRow {
   id: string;
@@ -44,6 +45,7 @@ export async function publicConfig(env: Env) {
     signup_enabled: signupEnabled(env),
     signup_code_required: !!env.SIGNUP_CODE,
     reissue_auto: reissueAuto(env),
+    viewer_until: viewerUntil(env),
     categories: cats.map((c) => ({ id: c.id, name: c.name, description: c.description, track: c.track })),
   };
 }

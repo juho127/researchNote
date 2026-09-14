@@ -50,7 +50,7 @@ export function render({ onLogin, error }) {
     h("div.grid.c2", { style: { marginTop: "16px" } },
       h("a.card.hover.pad-s", { href: "#/apply" }, h("b", "토큰이 없나요?"), h("div.small.muted", "발급 신청 → 관리자 승인 → 여기서 토큰 수령")),
       h("a.card.hover.pad-s", { href: "#/connect" }, h("b", "AI에게 맡기기"), h("div.small.muted", "주소 하나 주면 AI가 신청·MCP 등록·스킬 설치까지")),
-      h("a.card.hover.pad-s", { href: "#/view" }, h("b", "핀으로 열람"), h("div.small.muted", "공개 팀은 핀만 입력하면 읽기 전용으로 볼 수 있습니다 (24시간)")),
+      h("a.card.hover.pad-s", { href: "#/view" }, h("b", "핀으로 열람"), h("div.small.muted", "공개 팀은 핀만 입력하면 읽기 전용으로 볼 수 있습니다")),
     ),
     h("p.small.muted", { style: { marginTop: "12px" } }, "이미 신청했다면 ", h("a", { href: "#/claim" }, "수령 코드로 상태 확인"), " · 토큰을 잃어버렸다면 ", h("a", { href: "#/reissue" }, "토큰 재발급 요청"), "."),
   ));

@@ -14,6 +14,8 @@ export interface Env {
   SIGNUP_CODE?: string;
   /** 토큰 재발급: "false" 면 관리자 승인 후 수령, 그 외(기본)는 이름+이메일 일치 시 즉시 발급 */
   REISSUE_AUTO?: string;
+  /** 핀 열람 세션 만료일 (YYYY-MM-DD, APP_TZ 기준 그날 자정까지). 비우거나 지난 날짜면 24시간 세션 */
+  VIEWER_SESSION_UNTIL?: string;
 }
 
 export type GlobalRole = "admin" | "member";
