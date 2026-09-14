@@ -198,26 +198,66 @@ function categoryDialog(c, body) {
 }
 
 // ---------- 연구원 ----------
+const USERS_VIEW_KEY = "rn:admin:users-view";
+const ROLE_PILL = { lead: ["리드", "gold sm"], evaluator: ["평가자", "ai sm"], member: ["구성원", "sm"] };
+// member 역할은 기본적으로 배지를 생략(칩이 지저분해짐), 카테고리 섹션 안에서만 showMember 로 표시
+const rolePill = (role, showMember = false) => (role === "member" && !showMember) || !ROLE_PILL[role] ? null : pill(...ROLE_PILL[role]);
+
 async function users(body, query) {
   const [list, cats] = await Promise.all([get("/api/admin/users"), get("/api/admin/categories")]);
   const q = input({ placeholder: "이름·이메일·ID 검색", style: { width: "240px" } });
-  const tbody = h("tbody");
-  const draw = () => {
-    const term = q.value.trim().toLowerCase();
-    mount(tbody, list.filter((u) => !term || [u.name, u.email, u.id].some((x) => (x || "").toLowerCase().includes(term))).map((u) => h("tr", { class: u.disabled_at ? "dim" : "" },
-      h("td", h("span.row", { style: { gap: "6px" } }, avatar(u.name), h("span", h("b", u.name), u.role === "admin" ? [" ", pill("관리자", "gold sm")] : null, u.disabled_at ? [" ", pill("비활성", "mute sm")] : null, h("div.tiny.muted", u.id + (u.email ? " · " + u.email : ""))))),
-      h("td", h("div.chip-list", (u.memberships || []).map((m) => h("span.chip", m.category_name, m.role === "lead" ? pill("리드", "gold sm") : m.role === "evaluator" ? pill("평가자", "ai sm") : null)), !u.memberships?.length ? h("span.tiny.muted", "소속 없음") : null)),
+  let saved = "category";
+  try { saved = localStorage.getItem(USERS_VIEW_KEY) || "category"; } catch {}
+  const viewSel = select([{ value: "category", label: "카테고리별 보기" }, { value: "all", label: "전체 목록" }], { value: saved, style: { width: "150px" } });
+  const out = h("div");
+  const inCat = (u, cid) => (u.memberships || []).find((m) => m.category_id === cid);
+  const matches = (u, term) => !term || [u.name, u.email, u.id].some((x) => (x || "").toLowerCase().includes(term));
+  const ORDER = { lead: 0, member: 1, evaluator: 2 };
+  // cid 가 있으면 카테고리 섹션의 행: 이름 옆에 그 카테고리에서의 역할, 소속 칸에는 나머지 소속만
+  const row = (u, cid) => {
+    const mine = cid ? inCat(u, cid) : null;
+    const others = (u.memberships || []).filter((m) => m.category_id !== cid);
+    return h("tr", { class: u.disabled_at ? "dim" : "" },
+      h("td", h("span.row", { style: { gap: "6px" } }, avatar(u.name), h("span", h("b", u.name), u.role === "admin" ? [" ", pill("관리자", "gold sm")] : null, mine ? [" ", rolePill(mine.role, true)] : null, u.disabled_at ? [" ", pill("비활성", "mute sm")] : null, h("div.tiny.muted", u.id + (u.email ? " · " + u.email : ""))))),
+      h("td", h("div.chip-list", others.map((m) => h("span.chip", m.category_name, rolePill(m.role))), !others.length ? h("span.tiny.muted", cid ? "—" : "소속 없음") : null)),
       h("td", h("span", `${u.active_tokens}/${u.token_count}`), " ", h("button.btn.xs", { onclick: () => issueTokenDialog(u) }, "발급")),
       h("td", String(u.project_count)), h("td", String(u.entry_count)),
       h("td", { class: u.role !== "admin" && !u.disabled_at && daysSince(u.last_entry_at) > 14 ? "stale" : "" }, u.last_entry_at ? fmtRel(u.last_entry_at) : "없음"),
       h("td.right", h("button.btn.xs", { onclick: () => userDialog(u, cats, body) }, "수정")),
-    )));
+    );
+  };
+  const table = (rows, cid) => h("div.table-wrap", h("table.table",
+    h("thead", h("tr", h("th", "연구원"), h("th", cid ? "다른 소속" : "소속 (카테고리)"), h("th", "토큰 활성/전체"), h("th", "프로젝트"), h("th", "기록"), h("th", "마지막 기록"), h("th", ""))),
+    h("tbody", rows)));
+  const draw = () => {
+    const term = q.value.trim().toLowerCase();
+    const shown = list.filter((u) => matches(u, term));
+    if (viewSel.value === "all") { mount(out, shown.length ? table(shown.map((u) => row(u))) : h("div.empty", "검색 결과가 없습니다")); return; }
+    const sections = [];
+    const placed = new Set();
+    for (const c of cats) {
+      const members = shown.filter((u) => inCat(u, c.id)).sort((a, b) => (ORDER[inCat(a, c.id).role] ?? 1) - (ORDER[inCat(b, c.id).role] ?? 1) || a.name.localeCompare(b.name, "ko"));
+      members.forEach((u) => placed.add(u.id));
+      if (term && !members.length) continue;
+      const total = list.filter((u) => inCat(u, c.id) && !u.disabled_at).length;
+      sections.push(h("section", { style: { marginBottom: "18px" } },
+        h("div.row.between", { style: { marginBottom: "6px" } },
+          h("h3", { style: { margin: 0 } }, c.name, " ", pill(c.track === "capstone" ? "캡스톤" : "논문", "sm")),
+          h("span.small.muted", `${total}명`, h("a.small", { href: `#/team/${c.id}`, style: { marginLeft: "8px" } }, "팀 페이지"))),
+        members.length ? table(members.map((u) => row(u, c.id)), c.id) : h("div.empty", "소속 연구원이 없습니다")));
+    }
+    const rest = shown.filter((u) => !placed.has(u.id));
+    if (rest.length) sections.push(h("section",
+      h("div.row.between", { style: { marginBottom: "6px" } }, h("h3", { style: { margin: 0 } }, "소속 없음"), h("span.small.muted", `${rest.length}명`)),
+      table(rest.map((u) => row(u)))));
+    mount(out, sections.length ? sections : h("div.empty", "검색 결과가 없습니다"));
   };
   q.addEventListener("input", draw);
+  viewSel.addEventListener("change", () => { try { localStorage.setItem(USERS_VIEW_KEY, viewSel.value); } catch {} draw(); });
   draw();
   mount(body,
-    h("div.row.between", { style: { marginBottom: "12px" } }, h("div.row", q, h("span.small.muted", `${list.length}명`)), h("button.btn.primary", { onclick: () => userDialog(null, cats, body) }, "+ 연구원 등록")),
-    h("div.table-wrap", h("table.table", h("thead", h("tr", h("th", "연구원"), h("th", "소속 (카테고리)"), h("th", "토큰 활성/전체"), h("th", "프로젝트"), h("th", "기록"), h("th", "마지막 기록"), h("th", ""))), tbody)),
+    h("div.row.between", { style: { marginBottom: "12px" } }, h("div.row", q, viewSel, h("span.small.muted", `${list.length}명`)), h("button.btn.primary", { onclick: () => userDialog(null, cats, body) }, "+ 연구원 등록")),
+    out,
     h("p.small.muted", { style: { marginTop: "10px" } }, "토큰은 발급 시 한 번만 표시됩니다(서버에는 해시만 저장). 잃어버리면 회수 후 재발급하세요."),
   );
 }
