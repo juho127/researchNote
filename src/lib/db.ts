@@ -30,6 +30,7 @@ export interface EntryRow {
   content: string;
   source: string;
   review_status: string;
+  weekly: number;
   created_at: string;
   updated_at: string;
 }

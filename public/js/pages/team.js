@@ -1,6 +1,7 @@
 import { state, get, post, h, mount, pill, avatar, stages, stageLabel, fmtRel, fmtDT, daysSince, openReport, downloadFile, input, textarea, select, field, modal, daysAgo, today, toast, errToast, STATUS_LABEL } from "../core.js";
 import { projectCard, feedList, newProjectDialog } from "./home.js";
 import { teamNoticeView, pinnedStrip } from "./notices.js";
+import { DOW, shortDate } from "../week.js";
 
 export async function render(container, categoryId, query) {
   mount(container, h("div.loading", h("span.spinner"), " 불러오는 중…"));
@@ -11,7 +12,8 @@ export async function render(container, categoryId, query) {
 
   const viewSeg = h("div.seg");
   const jrCount = (detail.join_requests || []).length;
-  for (const [k, l] of [["board", "보드"], ["list", "목록"], ["notices", `공지${notices.length ? " " + notices.length : ""}`], ["members", `구성원${jrCount ? " · 가입 요청 " + jrCount : ""}`], ["review", `검토 대기${detail.review_queue.length ? " " + detail.review_queue.length : ""}`], ["feed", "활동"]]) {
+  const weeklyTab = cat.week_start || cat.track === "capstone" ? [["weekly", "주차별"]] : [];
+  for (const [k, l] of [["board", "보드"], ["list", "목록"], ...weeklyTab, ["notices", `공지${notices.length ? " " + notices.length : ""}`], ["members", `구성원${jrCount ? " · 가입 요청 " + jrCount : ""}`], ["review", `검토 대기${detail.review_queue.length ? " " + detail.review_queue.length : ""}`], ["feed", "활동"]]) {
     viewSeg.append(h("button", { class: view === k ? "active" : "", onclick: () => (location.hash = `#/team/${categoryId}?view=${k}`) }, l));
   }
 
@@ -33,10 +35,44 @@ export async function render(container, categoryId, query) {
   else if (view === "list") body = renderList(detail.projects);
   else if (view === "members") body = renderMembers(detail, categoryId, container, query);
   else if (view === "review") body = renderReview(detail.review_queue);
+  else if (view === "weekly") body = await renderWeekly(categoryId);
   else if (view === "notices") body = await teamNoticeView(detail, categoryId);
   else body = h("div.card", feedList(detail.activity));
 
   mount(container, header, view === "notices" ? null : pinnedStrip(notices, categoryId), body);
+}
+
+// ---------- 주차별 제출 현황 ----------
+async function renderWeekly(categoryId) {
+  const d = await get(`/api/categories/${categoryId}/weekly`);
+  if (!d.enabled) return h("div.empty", "주차 설정이 없습니다. 관리자가 [관리자 → 카테고리 → 수정]에서 1주차 시작일과 마감 요일을 정하면 프로젝트별 주간 보고 제출 현황이 표시됩니다.");
+  const cfg = d.cfg, cur = d.current;
+  const head = h("div.card.pad-s", { style: { marginBottom: "14px" } },
+    h("div.row.between", { style: { flexWrap: "wrap", gap: "6px" } },
+      h("div", h("b", cur ? `이번 주 ${cur.n}주차` : d.current_week < 1 ? "학기 시작 전" : "학기 종료"), cur ? h("span.small.muted", ` · ${shortDate(cur.start)}~${shortDate(cur.due)} · 마감 ${shortDate(cur.due)} 24:00 · 제출 ${cur.submitted}/${cur.total}`) : null),
+      h("span.small.muted", `1주차 ${cfg.week_start} 시작 · 총 ${cfg.week_count}주 · 마감 매주 ${DOW[cfg.week_due_dow]}요일 자정`)),
+    cur && cur.missing.length ? h("div.small", { style: { marginTop: "6px" } }, pill("미제출", "warn sm"), " ", cur.missing.map((m, i) => [i ? ", " : "", h("a", { href: `#/project/${m.id}` }, m.title)])) : cur ? h("div.small", { style: { marginTop: "6px", color: "var(--ok)" } }, "이번 주 주간 보고가 모두 제출되었습니다") : null,
+  );
+  const thead = h("thead", h("tr", h("th.wk-p", "프로젝트"), ...d.weeks.map((w) => h("th.wk" + (w.current ? ".cur" : ""), { title: `${w.start} ~ ${w.end}` }, `${w.n}주`, h("small", shortDate(w.end)))), h("th", "제출"), h("th", "누락")));
+  const tbody = h("tbody", d.projects.map((p) => {
+    const created = (p.created_at || "").slice(0, 10);
+    return h("tr",
+      h("td.wk-p", h("a", { href: `#/project/${p.id}` }, p.title), h("div.tiny.muted", p.owner_name)),
+      ...p.cells.map((c, i) => {
+        const w = d.weeks[i];
+        let cls = "td.wk", txt = "";
+        if (c.weekly) { cls += ".ok"; txt = "✓"; }
+        else if (c.entries) { cls += ".part"; txt = `·${c.entries}`; }
+        else if (w.past && w.end >= created) { cls += ".miss"; txt = "✗"; }
+        else if (w.current) { cls += ".wait"; txt = "…"; }
+        if (w.current) cls += ".cur";
+        const inner = c.entry_id ? h("a", { href: `#/project/${p.id}?entry=${c.entry_id}`, title: `${c.entry_date} ${c.entry_title}` }, txt) : txt;
+        return h(cls, { title: c.entries ? `${w.n}주차: 주간 보고 ${c.weekly}건 · 기록 ${c.entries}건` : `${w.n}주차 (${w.start}~${w.end})` }, inner);
+      }),
+      h("td.num", String(p.submitted)), h("td.num", { style: { color: p.missed ? "var(--bad)" : "" } }, String(p.missed)));
+  }));
+  return h("div", head, h("div.table-wrap", h("table.table.wk-grid", thead, tbody)),
+    h("p.tiny.muted", { style: { marginTop: "8px" } }, "✓ 주간 보고 제출 · ·n 일반 기록만 n건 · ✗ 미제출(지난 주차, 프로젝트 생성 이후만) · … 이번 주 대기. 기록을 쓸 때 「주간 보고로 표시」를 체크하면 ✓ 로 집계됩니다."));
 }
 
 function renderBoard(board) {

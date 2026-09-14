@@ -1,6 +1,7 @@
 import type { AuthContext, Env, Stage } from "../env";
 import { REVIEW_STATUSES, isStage, isStageOf, stageIds, trackOf } from "../env";
-import { bad, forbidden, notFound, isDateStr, oneOf, str, strLimited, clampInt } from "../lib/http";
+import { bad, bool, forbidden, notFound, isDateStr, oneOf, str, strLimited, clampInt } from "../lib/http";
+import { weekCfgOf, weekOf } from "../lib/week";
 import { newId } from "../lib/id";
 import { nowIso, todayIn } from "../lib/time";
 import { categoryRole, requireCategoryMember, canReview } from "../lib/auth";
@@ -13,6 +14,8 @@ export interface EntryFull extends EntryRow {
   comment_count: number;
   comments?: CommentRow[];
   can_edit?: boolean;
+  /** 카테고리 주차 설정 기준 주차 (설정 없으면 null) */
+  week?: number | null;
 }
 
 export interface CommentRow {
@@ -38,6 +41,7 @@ export interface EntryListOpts {
   since?: string; // YYYY-MM-DD (date >=)
   until?: string; // YYYY-MM-DD (date <=)
   review_status?: string;
+  weekly?: boolean; // true 면 주간 보고만
   q?: string;
   limit?: number;
   offset?: number;
@@ -84,6 +88,7 @@ export async function listEntries(env: Env, ctx: AuthContext, opts: EntryListOpt
     where.push("e.review_status = ?");
     params.push(oneOf(opts.review_status, REVIEW_STATUSES, "review_status"));
   }
+  if (opts.weekly) where.push("e.weekly = 1");
   if (opts.q) {
     // LIKE 패턴 길이 제한(D1)을 피하기 위해 instr 사용
     const needle = str(opts.q, 200).toLowerCase();
@@ -102,7 +107,20 @@ export async function listEntries(env: Env, ctx: AuthContext, opts: EntryListOpt
     r.can_edit = ctx.isAdmin || r.author_id === ctx.user.id;
     if (opts.with_content === false) r.content = r.content.slice(0, 280);
   }
+  await attachWeeks(env, rows);
   return rows;
+}
+
+/** 각 기록에 카테고리 주차 설정 기준 week 를 붙인다 (설정 없으면 null) */
+async function attachWeeks(env: Env, rows: EntryFull[]): Promise<void> {
+  const ids = [...new Set(rows.map((r) => r.category_id).filter((x): x is string => !!x))];
+  if (!ids.length) return;
+  const rs = await env.DB.prepare(`SELECT id, week_start, week_count, week_due_dow FROM categories WHERE id IN (${ids.map(() => "?").join(",")})`).bind(...ids).all<{ id: string; week_start: string | null; week_count: number; week_due_dow: number }>();
+  const cfgs = new Map((rs.results ?? []).map((c) => [c.id, weekCfgOf(c)]));
+  for (const r of rows) {
+    const cfg = cfgs.get(r.category_id!);
+    r.week = cfg ? weekOf(cfg, r.date) : null;
+  }
 }
 
 export async function getEntryFull(env: Env, ctx: AuthContext, id: string): Promise<EntryFull> {
@@ -115,6 +133,7 @@ export async function getEntryFull(env: Env, ctx: AuthContext, id: string): Prom
     .all<CommentRow>();
   row.comments = cs.results ?? [];
   row.can_edit = ctx.isAdmin || row.author_id === ctx.user.id;
+  await attachWeeks(env, [row]);
   return row;
 }
 
@@ -124,6 +143,8 @@ export interface EntryInput {
   title?: unknown;
   content?: unknown;
   review_status?: unknown;
+  /** 주간 보고 표시 (캡스톤: 마감 요일 자정까지 주 1건) */
+  weekly?: unknown;
 }
 
 export async function createEntry(env: Env, ctx: AuthContext, projectId: string, input: EntryInput): Promise<EntryFull> {
@@ -142,15 +163,16 @@ export async function createEntry(env: Env, ctx: AuthContext, projectId: string,
   }
   const content = strLimited(input.content, 200_000, "content");
   const review = input.review_status === undefined || input.review_status === null ? "none" : oneOf(input.review_status, ["none", "requested"] as const, "review_status (생성 시)");
+  const weekly = input.weekly === undefined || input.weekly === null ? 0 : bool(input.weekly) ? 1 : 0;
   const id = newId("ent");
   const at = nowIso();
   const source = ctx.source;
   await env.DB
     .prepare(
-      `INSERT INTO entries (id, project_id, author_id, date, stage, title, content, source, review_status, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      `INSERT INTO entries (id, project_id, author_id, date, stage, title, content, source, review_status, weekly, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     )
-    .bind(id, projectId, ctx.user.id, date, stage, title, content, source, review, at, at)
+    .bind(id, projectId, ctx.user.id, date, stage, title, content, source, review, weekly, at, at)
     .run();
   // 해당 단계가 todo 였다면 doing 으로
   await env.DB
@@ -158,7 +180,7 @@ export async function createEntry(env: Env, ctx: AuthContext, projectId: string,
     .bind(at, ctx.user.id, projectId, stage)
     .run();
   await touchProject(env, projectId);
-  await logActivity(env, { actor_id: ctx.user.id, category_id: p.category_id, project_id: projectId, action: "entry.create", target_id: id, summary: `[${date}] ${title}`, source });
+  await logActivity(env, { actor_id: ctx.user.id, category_id: p.category_id, project_id: projectId, action: "entry.create", target_id: id, summary: `[${date}] ${title}${weekly ? " (주간 보고)" : ""}`, source });
   if (review === "requested") {
     await logActivity(env, { actor_id: ctx.user.id, category_id: p.category_id, project_id: projectId, action: "review.request", target_id: id, summary: title, source });
   }
@@ -198,6 +220,10 @@ export async function updateEntry(env: Env, ctx: AuthContext, id: string, input:
     if (!isStageOf(p.track, input.stage)) bad(`stage 값이 올바르지 않습니다 (${trackOf(p.track).label} 트랙: ${stageIds(p.track).join(", ")})`);
     sets.push("stage = ?");
     params.push(input.stage);
+  }
+  if (input.weekly !== undefined && input.weekly !== null) {
+    sets.push("weekly = ?");
+    params.push(bool(input.weekly) ? 1 : 0);
   }
   let reviewChange: string | null = null;
   if (input.review_status !== undefined) {

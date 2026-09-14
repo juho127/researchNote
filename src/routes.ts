@@ -6,6 +6,7 @@ import * as E from "./services/entries";
 import * as T from "./services/tasks";
 import * as A from "./services/admin";
 import * as F from "./services/feed";
+import * as W from "./services/weekly";
 import * as R from "./services/report";
 import * as S from "./services/signup";
 import * as TM from "./services/teams";
@@ -77,6 +78,7 @@ add("GET", "/api/categories", async (_r, env, ctx) => {
 });
 add("GET", "/api/categories/:id", async (_r, env, ctx, p) => json(await F.categoryDetail(env, ctx, p.id)));
 add("GET", "/api/categories/:id/board", async (_r, env, ctx, p) => json(await P.categoryBoard(env, ctx, p.id)));
+add("GET", "/api/categories/:id/weekly", async (_r, env, ctx, p) => json(await W.weeklyStatus(env, ctx, p.id)));
 add("GET", "/api/categories/:id/report", async (_r, env, ctx, p, url) =>
   reportResponse(await R.categoryReport(env, ctx, p.id, q(url, "format") || "html", { from: q(url, "from"), to: q(url, "to") }), q(url, "download") === "1")
 );
@@ -110,13 +112,13 @@ add("GET", "/api/entries", async (_r, env, ctx, _p, url) =>
   json(
     await E.listEntries(env, ctx, {
       project_id: q(url, "project_id"), category_id: q(url, "category_id"), author_id: q(url, "mine") === "1" ? ctx.user.id : q(url, "author_id"),
-      stage: q(url, "stage"), since: q(url, "since"), until: q(url, "until"), review_status: q(url, "review_status"), q: q(url, "q"),
+      stage: q(url, "stage"), since: q(url, "since"), until: q(url, "until"), review_status: q(url, "review_status"), weekly: q(url, "weekly") === "1", q: q(url, "q"),
       limit: Number(q(url, "limit")) || undefined, offset: Number(q(url, "offset")) || undefined, with_content: q(url, "brief") !== "1",
     })
   )
 );
 add("GET", "/api/projects/:id/entries", async (_r, env, ctx, p, url) =>
-  json(await E.listEntries(env, ctx, { project_id: p.id, stage: q(url, "stage"), since: q(url, "since"), until: q(url, "until"), review_status: q(url, "review_status"), limit: Number(q(url, "limit")) || undefined, offset: Number(q(url, "offset")) || undefined }))
+  json(await E.listEntries(env, ctx, { project_id: p.id, stage: q(url, "stage"), since: q(url, "since"), until: q(url, "until"), review_status: q(url, "review_status"), weekly: q(url, "weekly") === "1", limit: Number(q(url, "limit")) || undefined, offset: Number(q(url, "offset")) || undefined }))
 );
 add("POST", "/api/projects/:id/entries", async (req, env, ctx, p) => json(await E.createEntry(env, ctx, p.id, await readJson(req)), 201));
 add("GET", "/api/entries/:id", async (_r, env, ctx, p) => json(await E.getEntryFull(env, ctx, p.id)));

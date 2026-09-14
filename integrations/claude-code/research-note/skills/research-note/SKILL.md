@@ -57,6 +57,7 @@ description: 연구노트(Research Note) 플랫폼에 논문 진행 상황을 �
 
    - `title` 은 결과가 드러나게 한 줄로: "ResNet-50 baseline, CIFAR-10 acc 91.2%" (좋음) / "실험" (나쁨)
    - `stage` 는 작업 성격으로 고른다. 논문: 실험 코드 작성은 `method`, 실행·결과 분석은 `experiment`. 캡스톤: 린 캔버스·TAM-SAM-SOM 은 `market`, 구현·배포는 `mvp`, 사용자 테스트·지표·회고는 `feedback`. 캡스톤 기록 제목에는 루프 번호를 붙이면 좋다 ("루프 2: 온보딩 화면 개선 후 전환율 12%→19%").
+   - **주간 보고(캡스톤)**: 카테고리에 주차 설정이 있으면 매주 마감 요일(기본 토요일) 자정까지 `weekly=true` 기록 1건을 남긴다. 제목은 `N주차 주간 보고: 핵심 한 줄`, 본문은 ## 이번 주 한 일 / ## 결과·지표 / ## 막힌 점 / ## 다음 주 계획. 현재 주차·마감·제출 여부는 `get_project` 의 주차 절, 팀 전체는 `weekly_status`.
    - `date` 는 실제 연구일. 어제 한 일을 오늘 기록하면 어제 날짜.
 4. 누적 결론이 바뀌었으면 `update_stage` 로 해당 단계 정리를 갱신한다. **덮어쓰기**이므로 기존 정리를 읽고 병합한 전체 텍스트를 보낸다. 단계가 실질적으로 끝나 다음으로 넘어가야 하면 사용자에게 확인한 뒤 `advance_stage` (생략 시 다음 단계, `to` 로 특정 단계·되돌리기). 마지막 단계에서 `advance_stage` 는 논문 완료 처리다.
 5. "다음 할 일" 항목은 `add_task` 로 등록한다. 이미 있는 할 일이 끝났으면 `update_task status=done`.
@@ -66,6 +67,7 @@ description: 연구노트(Research Note) 플랫폼에 논문 진행 상황을 �
 
 - 팀 찾기·가입: `list_teams`(전체 팀·가입 정책·내 상태) → 사용자가 원하면 `join_team(category_id=<list_teams 결과의 id>, message?)`(즉시 가입 또는 리드 승인 요청). 팀 = 카테고리이며 인자 이름은 `category_id` 다(`team_id` 아님). 한 사람이 여러 팀에 속할 수 있다.
 - 공지: `list_notices`(전체 공지 + 소속 팀 공지). **세션 시작 시 한 번 읽는다.** 발표 형식(시간·장수)·제출 요령·기록 요구사항이 있으면 발표 자료·기록·보고서를 만들 때 그대로 따른다. 사용자가 관리자·리드이고 명시적으로 원할 때만 `post_notice`.
+- 주차 현황: `weekly_status`(팀 × 주차 격자, 이번 주 미제출 프로젝트)
 - 팀 상황: `team_overview`(구성원·프로젝트·검토 대기), `team_feed`(최근 활동)
 - 특정 기록 읽기: `list_entries` → `get_entry` (코멘트 포함)
 - 팀원 기록에 의견: `add_comment`. 리드/관리자만 `kind: approve | request_changes`

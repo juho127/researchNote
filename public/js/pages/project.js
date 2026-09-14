@@ -1,3 +1,4 @@
+import { DOW, weekOf, weekRange, shortDate } from "../week.js";
 import { state, get, post, patch, put, del, h, mount, clear, pill, avatar, stages, stageLabel, stageHint, stageMilestone, stageIndex, stageSelect, track as trackDef, ROLE_LABEL, fmtRel, fmtDT, weekday, today, daysAgo, input, textarea, field, select, modal, confirmDialog, toast, errToast, mdEl, openReport, downloadFile, projectProgress, STATUS_LABEL, STAGE_STATUS_LABEL, REVIEW_LABEL, REVIEW_CLASS } from "../core.js";
 
 let current = null; // { project, tab, filters }
@@ -46,6 +47,13 @@ function draw(container) {
       }, h("div.s-l", stageLabel(s.stage)), h("div.s-s", STAGE_STATUS_LABEL[s.status], s.entry_count ? ` · 기록 ${s.entry_count}` : null), stageMilestone(s.stage) ? h("div.tiny", { style: { color: "var(--gold)", marginTop: "2px" } }, "⏱ " + stageMilestone(s.stage)) : null))),
       p.can_edit && p.status !== "archived" ? advanceButton(p, container) : null,
     ),
+    p.week_cfg && p.current_week >= 1 && p.current_week <= p.week_cfg.week_count && p.current_week_range
+      ? h("div.row", { style: { marginTop: "10px", gap: "10px", flexWrap: "wrap" } },
+          pill(`${p.current_week}주차`, "navy sm"),
+          h("span.small.muted", `${shortDate(p.current_week_range.start)}~${shortDate(p.current_week_range.end)} · 주간 보고 마감 ${shortDate(p.current_week_range.end)} 24:00`),
+          p.weekly_this_week ? pill("이번 주 주간 보고 제출됨", "ok sm") : pill("이번 주 주간 보고 미제출", "warn sm"),
+          !p.weekly_this_week && p.can_edit && p.status === "active" ? h("button.btn.xs.primary", { onclick: () => entryEditor(p, null, container, { weekly: true }) }, "+ 주간 보고") : null)
+      : null,
   );
 
   const tabs = h("div.tabs");
@@ -101,7 +109,8 @@ async function renderTimeline(body, container) {
   let view = current.timelineView;
   if (!view) { try { view = localStorage.getItem("rn.timeline.view") || "date"; } catch { view = "date"; } current.timelineView = view; }
   const setView = (v) => { current.timelineView = v; try { localStorage.setItem("rn.timeline.view", v); } catch {} renderTimeline(body, container); };
-  const viewSeg = h("div.seg", h("button", { class: view === "date" ? "active" : "", onclick: () => setView("date") }, "날짜별"), h("button", { class: view === "stage" ? "active" : "", onclick: () => setView("stage") }, "단계별"));
+  if (view === "week" && !p.week_cfg) view = "date";
+  const viewSeg = h("div.seg", h("button", { class: view === "date" ? "active" : "", onclick: () => setView("date") }, "날짜별"), p.week_cfg ? h("button", { class: view === "week" ? "active" : "", onclick: () => setView("week") }, "주차별") : null, h("button", { class: view === "stage" ? "active" : "", onclick: () => setView("stage") }, "단계별"));
 
   const stageSel = select([{ value: "", label: "모든 단계" }, ...stages(p.track).map((s) => ({ value: s.id, label: s.label }))], { value: current.stageFilter, onchange: (e) => { current.stageFilter = e.target.value; renderTimeline(body, container); } });
   const reviewSel = select([{ value: "", label: "모든 검토 상태" }, { value: "requested", label: "검토 요청" }, { value: "changes_requested", label: "수정 요청" }, { value: "approved", label: "승인" }], { value: current.reviewFilter, onchange: (e) => { current.reviewFilter = e.target.value; renderTimeline(body, container); } });
@@ -150,6 +159,33 @@ async function renderTimeline(body, container) {
         h("span.spacer"), h("span.tiny.muted", s.hint));
       tl.append(h("div.card", { style: { padding: 0, borderColor: isCurrent ? "var(--navy)" : "var(--rule)" } }, head, bodyEl));
     });
+  } else if (view === "week" && p.week_cfg) {
+    // 주차별: 카테고리 주차 설정으로 묶고, 주간 보고 제출 여부를 표시
+    const cfg = p.week_cfg;
+    const byWeek = new Map();
+    for (const e of entries) { const n = e.week ?? weekOf(cfg, e.date); (byWeek.get(n) || byWeek.set(n, []).get(n)).push(e); }
+    const ns = [...byWeek.keys()];
+    if (p.current_week >= 1 && p.current_week <= cfg.week_count && !ns.includes(p.current_week)) ns.push(p.current_week);
+    ns.sort((a, b) => b - a);
+    const td = today();
+    tl = h("div.stack", { style: { gap: "10px" } });
+    for (const n of ns) {
+      const rows = byWeek.get(n) || [];
+      const r = n >= 1 ? weekRange(cfg, n) : null;
+      const hasWeekly = rows.some((e) => e.weekly);
+      const isCur = n === p.current_week;
+      const past = r ? r.end < td : false;
+      const status = n < 1 ? null : hasWeekly ? pill("주간 보고 제출", "ok sm") : isCur ? pill("주간 보고 미제출", "warn sm") : past ? pill("주간 보고 누락", "bad sm") : null;
+      const head = h("div.row", { style: { padding: "10px 12px", gap: "8px", flexWrap: "wrap" } },
+        h("b", { style: { color: "var(--navy)" } }, n >= 1 ? `${n}주차` : "학기 시작 전"),
+        r ? h("span.small.muted", `${shortDate(r.start)}~${shortDate(r.end)} · 마감 ${shortDate(r.end)} 24:00`) : null,
+        isCur ? pill("이번 주", "navy sm") : null, status,
+        h("span.small.muted", `기록 ${rows.length}건`),
+        h("span.spacer"),
+        isCur && !hasWeekly && p.can_edit && p.status === "active" ? h("button.btn.xs.primary", { onclick: () => entryEditor(p, null, container, { weekly: true }) }, "+ 주간 보고") : null);
+      tl.append(h("div.card", { style: { padding: 0, borderColor: isCur ? "var(--navy)" : "var(--rule)" } }, head,
+        h("div.timeline", { style: { padding: "12px 4px 4px" } }, rows.length ? dayGroups(rows) : h("div.small.muted", { style: { padding: "4px 0 8px" } }, "이 주차의 기록이 없습니다"))));
+    }
   } else {
     tl = h("div.timeline", dayGroups(entries));
   }
@@ -174,7 +210,7 @@ function entryCard(e, container) {
   const more = long ? h("button.btn.ghost.xs", { onclick: () => { bodyEl.classList.toggle("clamp"); more.textContent = bodyEl.classList.contains("clamp") ? "더 보기" : "접기"; } }, "더 보기") : null;
   const comments = h("div.comments");
   const card = h("div.card.entry.rv-" + e.review_status, { dataset: { entry: e.id } },
-    h("div.e-h", h("div.e-t", e.title), pill(stageLabel(e.stage)), e.source === "mcp" ? pill("AI 기록", "ai") : null, e.review_status !== "none" ? pill(REVIEW_LABEL[e.review_status], REVIEW_CLASS[e.review_status]) : null),
+    h("div.e-h", h("div.e-t", e.title), pill(stageLabel(e.stage)), e.week ? pill(`${e.week}주차`, "sm") : null, e.weekly ? pill("주간 보고", "gold sm") : null, e.source === "mcp" ? pill("AI 기록", "ai") : null, e.review_status !== "none" ? pill(REVIEW_LABEL[e.review_status], REVIEW_CLASS[e.review_status]) : null),
     h("div.e-m", avatar(e.author_name), h("span", e.author_name), h("span", "·"), h("span", fmtDT(e.created_at)), e.updated_at !== e.created_at ? h("span.tiny", `(수정 ${fmtRel(e.updated_at)})`) : null),
     e.content ? bodyEl : null,
     more,
@@ -228,11 +264,13 @@ function reviewDialog(e, status, container) {
   });
 }
 
-export function entryEditor(p, e, container) {
+export function entryEditor(p, e, container, opts = {}) {
+  const asWeekly = !e && !!opts.weekly && !!p.week_cfg;
   const date = input({ type: "date", value: e?.date || today() });
   const stage = stageSelect(e?.stage || p.stage, [], p.track);
-  const title = input({ value: e?.title || "", placeholder: "한 줄 제목 — 결과가 드러나게", maxlength: 200 });
-  const content = textarea({ rows: 14, value: e?.content ?? "## 한 일\n- \n\n## 결과\n- \n\n## 다음 할 일\n- [ ] \n\n## 메모\n- " });
+  const title = input({ value: e?.title || (asWeekly && p.current_week >= 1 ? `${p.current_week}주차 주간 보고: ` : ""), placeholder: "한 줄 제목 — 결과가 드러나게", maxlength: 200 });
+  const content = textarea({ rows: 14, value: e?.content ?? (asWeekly ? "## 이번 주 한 일\n- \n\n## 결과·지표\n- \n\n## 막힌 점\n- \n\n## 다음 주 계획\n- [ ] " : "## 한 일\n- \n\n## 결과\n- \n\n## 다음 할 일\n- [ ] \n\n## 메모\n- ") });
+  const weekly = h("input", { type: "checkbox", checked: e ? !!e.weekly : asWeekly });
   const review = h("input", { type: "checkbox", checked: e?.review_status === "requested" });
   const preview = h("div.md", { style: { display: "none", minHeight: "200px", border: "1px solid var(--rule)", borderRadius: "9px", padding: "10px 12px", background: "#fff" } });
   const seg = h("div.seg", h("button.active", { onclick: (ev) => { swap(ev.target, false); } }, "편집"), h("button", { onclick: (ev) => { swap(ev.target, true); } }, "미리보기"));
@@ -245,12 +283,13 @@ export function entryEditor(p, e, container) {
       h("div.form-grid", field("연구일", date), field("단계", stage)),
       field("제목", title),
       h("div.field", h("div.row.between", h("span", "내용 (마크다운)"), seg), content, preview, h("span.help", "표(| a | b |), 코드(```), 체크박스(- [ ]), 링크 지원. Tab 으로 들여쓰기.")),
+      p.week_cfg ? h("label.check", weekly, "주간 보고로 표시", h("span.small.muted", ` — 매주 ${DOW[p.week_cfg.week_due_dow]}요일 자정까지 1건, 팀 페이지 [주차별] 탭에 ✓ 로 집계`)) : null,
       e ? null : h("label.check", review, "리드에게 검토 요청"),
     ),
     actions: [{ label: "취소" }, { label: e ? "저장" : "기록 저장", cls: "primary", onClick: async () => {
       if (!title.value.trim()) { toast("제목을 입력하세요", true); return false; }
-      if (e) await patch(`/api/entries/${e.id}`, { date: date.value, stage: stage.value, title: title.value.trim(), content: content.value });
-      else await post(`/api/projects/${p.id}/entries`, { date: date.value, stage: stage.value, title: title.value.trim(), content: content.value, review_status: review.checked ? "requested" : "none" });
+      if (e) await patch(`/api/entries/${e.id}`, { date: date.value, stage: stage.value, title: title.value.trim(), content: content.value, weekly: weekly.checked });
+      else await post(`/api/projects/${p.id}/entries`, { date: date.value, stage: stage.value, title: title.value.trim(), content: content.value, review_status: review.checked ? "requested" : "none", weekly: weekly.checked });
       toast(e ? "수정했습니다" : "기록을 저장했습니다");
       current.tab = "timeline";
       reload(container);

@@ -1,8 +1,9 @@
+import { weekCfgOf, weekOf, weekRange, type WeekCfg, type WeekInfo } from "../lib/week";
 import type { AuthContext, Env, Stage } from "../env";
 import { STAGE_LABELS, PROJECT_STATUSES, STAGE_STATUSES, isStageOf, stageIds, stagesOf, trackOf } from "../env";
 import { bad, forbidden, isDateStr, oneOf, str, strLimited, bool, clampInt } from "../lib/http";
 import { newId } from "../lib/id";
-import { nowIso } from "../lib/time";
+import { todayIn, nowIso } from "../lib/time";
 import { categoryRole, requireCategoryMember } from "../lib/auth";
 import { ensureStageRows, getProjectForRead, getProjectForWrite, isCollaborator, logActivity, touchProject, type ProjectRow } from "../lib/db";
 
@@ -125,12 +126,18 @@ export interface ProjectDetail extends ProjectCard {
   can_evaluate: boolean;
   track_label: string;
   track_noun: string;
+  /** 카테고리 주차 설정 (없으면 null) */
+  week_cfg: WeekCfg | null;
+  current_week: number;
+  current_week_range: WeekInfo | null;
+  /** 이번 주차에 주간 보고(weekly=1) 기록이 있는지 */
+  weekly_this_week: boolean;
 }
 
 export async function getProjectDetail(env: Env, ctx: AuthContext, id: string): Promise<ProjectDetail> {
   const p = await getProjectForRead(env, ctx, id);
   await ensureStageRows(env, id, p.track);
-  const [cardRs, stagesRs, tasksRs, membersRs, entriesRs, collabRs] = await env.DB.batch([
+  const [cardRs, stagesRs, tasksRs, membersRs, entriesRs, collabRs, catRs, weeklyRs] = await env.DB.batch([
     env.DB.prepare(`${CARD_SELECT} WHERE p.id = ?`).bind(id),
     env.DB.prepare(`
       SELECT s.stage, s.status, s.summary, s.updated_at, s.updated_by,
@@ -149,8 +156,15 @@ export async function getProjectDetail(env: Env, ctx: AuthContext, id: string): 
       FROM entries e JOIN users u ON u.id = e.author_id
       WHERE e.project_id = ? ORDER BY e.date DESC, e.created_at DESC LIMIT 10`).bind(id),
     env.DB.prepare(`SELECT u.id, u.name FROM project_collaborators c JOIN users u ON u.id = c.user_id WHERE c.project_id = ? AND u.disabled_at IS NULL ORDER BY u.name`).bind(id),
+    env.DB.prepare(`SELECT week_start, week_count, week_due_dow FROM categories WHERE id = ?`).bind(p.category_id),
+    env.DB.prepare(`SELECT date FROM entries WHERE project_id = ? AND weekly = 1 ORDER BY date DESC LIMIT 60`).bind(id),
   ]);
   const card = (cardRs.results as ProjectCard[])[0];
+  const weekCfg = weekCfgOf((catRs.results as { week_start: string | null; week_count: number; week_due_dow: number }[])[0]);
+  const today = todayIn(env.APP_TZ);
+  const currentWeek = weekCfg ? weekOf(weekCfg, today) : 0;
+  const currentRange = weekCfg && currentWeek >= 1 ? weekRange(weekCfg, currentWeek) : null;
+  const weeklyThisWeek = !!currentRange && ((weeklyRs.results ?? []) as { date: string }[]).some((e) => e.date >= currentRange.start && e.date <= currentRange.end);
   const stageMap = new Map((stagesRs.results as StageRow[]).map((s) => [s.stage, s]));
   const stages = stageIds(p.track).map(
     (s) => stageMap.get(s) ?? { stage: s, status: "todo", summary: "", updated_at: p.created_at, updated_by: null, entry_count: 0 }
@@ -171,6 +185,10 @@ export async function getProjectDetail(env: Env, ctx: AuthContext, id: string): 
     can_evaluate: role === "admin" || role === "lead" || role === "evaluator",
     track_label: track.label,
     track_noun: track.noun,
+    week_cfg: weekCfg,
+    current_week: currentWeek,
+    current_week_range: currentRange,
+    weekly_this_week: weeklyThisWeek,
   };
 }
 

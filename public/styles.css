@@ -280,3 +280,15 @@ textarea.input.mono{font-family:var(--mono);font-size:13px}
 .notice-strip a{color:var(--ink);display:inline-flex;align-items:center;gap:6px}
 .notice-strip a:hover{text-decoration:none;color:var(--teal)}
 label.check.small{font-size:12.5px;color:var(--muted)}
+
+/* 주차별 제출 현황 (팀 페이지) */
+.wk-grid th.wk,.wk-grid td.wk{text-align:center;min-width:46px;padding:6px 4px;font-variant-numeric:tabular-nums}
+.wk-grid th.wk small{display:block;font-size:10px;color:var(--muted);font-weight:500;letter-spacing:0;text-transform:none}
+.wk-grid th.cur,.wk-grid td.cur{background:#F3F6FB}
+.wk-grid th.wk-p,.wk-grid td.wk-p{position:sticky;left:0;background:#fff;min-width:200px;z-index:1}
+.wk-grid th.wk-p{background:var(--wash)}
+.wk-grid td.ok,.wk-grid td.ok a{color:var(--ok);font-weight:700}
+.wk-grid td.part{color:var(--muted)}
+.wk-grid td.miss{color:var(--bad);font-weight:700}
+.wk-grid td.wait{color:var(--warn)}
+.wk-grid td.num{text-align:center;font-variant-numeric:tabular-nums}

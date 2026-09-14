@@ -1,6 +1,6 @@
 import type { AuthContext, Env, User } from "../env";
 import { TRACKS, isTrack, DEFAULT_TRACK } from "../env";
-import { bad, oneOf, str, bool, clampInt } from "../lib/http";
+import { bad, oneOf, str, bool, clampInt, isDateStr } from "../lib/http";
 import { newId, newToken, tokenHint, sha256Hex, slugify } from "../lib/id";
 import { nowIso, daysAgoIso, daysAgoDate } from "../lib/time";
 import { logActivity } from "../lib/db";
@@ -20,6 +20,10 @@ export interface CategoryRow {
   /** 핀 설정 여부 (핀 자체·해시는 절대 내려보내지 않음) */
   pin_set: boolean;
   pin_updated_at: string | null;
+  /** 주차 설정: 1주차 시작일(없으면 주차 기능 꺼짐) · 총 주차 · 마감 요일(0=일…6=토) */
+  week_start: string | null;
+  week_count: number;
+  week_due_dow: number;
   created_at: string;
   archived_at: string | null;
   member_count?: number;
@@ -56,7 +60,22 @@ async function loadCategory(env: Env, id: string): Promise<CategoryRow> {
 
 const JOIN_POLICIES = ["open", "approval", "closed"] as const;
 
-export async function createCategory(env: Env, ctx: AuthContext, input: { name?: unknown; description?: unknown; color?: unknown; id?: unknown; join_policy?: unknown; track?: unknown; is_public?: unknown; pin?: unknown }): Promise<CategoryRow> {
+type WeekInput = { week_start?: unknown; week_count?: unknown; week_due_dow?: unknown };
+
+/** 주차 설정 입력 파싱: week_start(YYYY-MM-DD, 빈 문자열 = 해제), week_count(1~30), week_due_dow(0~6) */
+function parseWeekInput(input: WeekInput): { week_start?: string | null; week_count?: number; week_due_dow?: number } {
+  const out: { week_start?: string | null; week_count?: number; week_due_dow?: number } = {};
+  if (input.week_start !== undefined && input.week_start !== null) {
+    const v = str(input.week_start, 10);
+    if (v && !isDateStr(v)) bad("week_start 는 YYYY-MM-DD 형식");
+    out.week_start = v || null;
+  }
+  if (input.week_count !== undefined && input.week_count !== null && input.week_count !== "") out.week_count = clampInt(input.week_count, 15, 1, 30);
+  if (input.week_due_dow !== undefined && input.week_due_dow !== null && input.week_due_dow !== "") out.week_due_dow = clampInt(input.week_due_dow, 6, 0, 6);
+  return out;
+}
+
+export async function createCategory(env: Env, ctx: AuthContext, input: { name?: unknown; description?: unknown; color?: unknown; id?: unknown; join_policy?: unknown; track?: unknown; is_public?: unknown; pin?: unknown } & WeekInput): Promise<CategoryRow> {
   const name = str(input.name, 100);
   if (!name) bad("name 이 필요합니다");
   const dup = await env.DB.prepare(`SELECT id FROM categories WHERE name = ?`).bind(name).first();
@@ -73,15 +92,16 @@ export async function createCategory(env: Env, ctx: AuthContext, input: { name?:
   }
   const isPublic = bool(input.is_public) ? 1 : 0;
   const pin = normPin(input.pin);
+  const wk = parseWeekInput(input);
   await env.DB
-    .prepare(`INSERT INTO categories (id, name, description, color, join_policy, track, is_public, pin_hash, pin_updated_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-    .bind(id, name, str(input.description, 1000), str(input.color, 20), policy, track, isPublic, pin ? await pinHash(id, pin) : null, pin ? at : null, at)
+    .prepare(`INSERT INTO categories (id, name, description, color, join_policy, track, is_public, pin_hash, pin_updated_at, week_start, week_count, week_due_dow, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+    .bind(id, name, str(input.description, 1000), str(input.color, 20), policy, track, isPublic, pin ? await pinHash(id, pin) : null, pin ? at : null, wk.week_start ?? null, wk.week_count ?? 15, wk.week_due_dow ?? 6, at)
     .run();
   await logActivity(env, { actor_id: ctx.user.id, category_id: id, action: "category.create", target_id: id, summary: name, source: ctx.source });
   return loadCategory(env, id);
 }
 
-export async function updateCategory(env: Env, ctx: AuthContext, id: string, input: { name?: unknown; description?: unknown; color?: unknown; archived?: unknown; join_policy?: unknown; track?: unknown; is_public?: unknown; pin?: unknown }): Promise<CategoryRow> {
+export async function updateCategory(env: Env, ctx: AuthContext, id: string, input: { name?: unknown; description?: unknown; color?: unknown; archived?: unknown; join_policy?: unknown; track?: unknown; is_public?: unknown; pin?: unknown } & WeekInput): Promise<CategoryRow> {
   const c = await env.DB.prepare(`SELECT * FROM categories WHERE id = ?`).bind(id).first<CategoryRow & { pin_hash: string | null }>();
   if (!c) bad("카테고리를 찾을 수 없습니다");
   const sets: string[] = [];
@@ -107,6 +127,21 @@ export async function updateCategory(env: Env, ctx: AuthContext, id: string, inp
       notes.push(pin ? "핀 변경" : "핀 해제");
       revokeViewers = true;
     }
+  }
+  // 주차 설정
+  const wk = parseWeekInput(input);
+  if (wk.week_start !== undefined && wk.week_start !== (c.week_start ?? null)) {
+    sets.push("week_start = ?");
+    params.push(wk.week_start);
+    notes.push(wk.week_start ? `1주차 ${wk.week_start}` : "주차 해제");
+  }
+  if (wk.week_count !== undefined && wk.week_count !== c.week_count) {
+    sets.push("week_count = ?");
+    params.push(wk.week_count);
+  }
+  if (wk.week_due_dow !== undefined && wk.week_due_dow !== c.week_due_dow) {
+    sets.push("week_due_dow = ?");
+    params.push(wk.week_due_dow);
   }
   if (input.name !== undefined) {
     const n = str(input.name, 100);

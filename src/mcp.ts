@@ -17,6 +17,7 @@ import * as P from "./services/projects";
 import * as E from "./services/entries";
 import * as T from "./services/tasks";
 import * as F from "./services/feed";
+import * as W from "./services/weekly";
 import * as R from "./services/report";
 import * as TM from "./services/teams";
 import * as EV from "./services/evaluations";
@@ -54,6 +55,14 @@ const idProp = (d: string) => ({ type: "string", description: d });
 const dateProp = (d: string) => ({ type: "string", pattern: "^\\d{4}-\\d{2}-\\d{2}$", description: `${d} (YYYY-MM-DD)` });
 const j = (v: unknown) => JSON.stringify(v, null, 2);
 const s = (v: unknown) => (v === undefined || v === null ? undefined : String(v));
+
+/** 주차 설정이 있는 프로젝트의 현재 주차·마감·주간 보고 제출 여부 */
+function weekLines(p: P.ProjectDetail): string {
+  if (!p.week_cfg) return "";
+  const r = p.current_week_range;
+  const dow = ["일", "월", "화", "수", "목", "금", "토"][p.week_cfg.week_due_dow];
+  return `\n\n## 주차 (1주차 ${p.week_cfg.week_start} 시작, 총 ${p.week_cfg.week_count}주, 마감 매주 ${dow}요일 자정)\n- 오늘: ${p.current_week >= 1 ? `${p.current_week}주차` : "학기 시작 전"}${r ? ` (${r.start} ~ ${r.end}, 마감 ${r.end} 자정)` : ""}\n- 이번 주 주간 보고: ${p.weekly_this_week ? "제출됨" : "미제출 — log_progress 에 weekly=true 로 남길 것"}`;
+}
 
 function projectSummaryMd(p: P.ProjectDetail): string {
   const L = [
@@ -128,7 +137,7 @@ const TOOLS: ToolDef[] = [
     inputSchema: { type: "object", properties: { project_id: idProp("프로젝트 ID") }, required: ["project_id"], additionalProperties: false },
     handler: async (env, ctx, a) => {
       const p = await P.getProjectDetail(env, ctx, String(a.project_id));
-      return { text: projectSummaryMd(p), data: p };
+      return { text: projectSummaryMd(p) + weekLines(p), data: p };
     },
   },
   {
@@ -247,13 +256,14 @@ const TOOLS: ToolDef[] = [
         stage: stageEnum,
         date: dateProp("연구일"),
         request_review: { type: "boolean", description: "검토 요청 여부" },
+        weekly: { type: "boolean", description: "주간 보고로 표시. 캡스톤은 카테고리 마감 요일(기본 토요일) 자정까지 주 1건. 제목 예: 3주차 주간 보고: 핵심 한 줄" },
       },
       required: ["project_id", "title", "content"],
       additionalProperties: false,
     },
     handler: async (env, ctx, a) => {
-      const e = await E.createEntry(env, ctx, String(a.project_id), { title: a.title, content: a.content, stage: a.stage, date: a.date, review_status: a.request_review === true ? "requested" : undefined });
-      return { text: `기록됨: [${e.date}] ${e.title} (${e.id}) · ${STAGE_LABELS[e.stage]}${e.review_status === "requested" ? " · 검토 요청됨" : ""}`, data: e };
+      const e = await E.createEntry(env, ctx, String(a.project_id), { title: a.title, content: a.content, stage: a.stage, date: a.date, review_status: a.request_review === true ? "requested" : undefined, weekly: a.weekly });
+      return { text: `기록됨: [${e.date}] ${e.title} (${e.id}) · ${STAGE_LABELS[e.stage]}${e.week ? ` · ${e.week}주차` : ""}${e.weekly ? " · 주간 보고" : ""}${e.review_status === "requested" ? " · 검토 요청됨" : ""}`, data: e };
     },
   },
   {
@@ -270,15 +280,16 @@ const TOOLS: ToolDef[] = [
         stage: stageEnum,
         q: { type: "string", description: "제목/본문 검색어" },
         review_status: { type: "string", enum: ["none", "requested", "changes_requested", "approved"] },
+        weekly: { type: "boolean", description: "주간 보고만" },
         limit: { type: "integer", minimum: 1, maximum: 200, description: "기본 30" },
         full: { type: "boolean", description: "본문 전체 포함 (기본 요약 280자)" },
       },
       additionalProperties: false,
     },
     handler: async (env, ctx, a) => {
-      const rows = await E.listEntries(env, ctx, { project_id: s(a.project_id), category_id: s(a.category_id), since: s(a.since), until: s(a.until), stage: s(a.stage), q: s(a.q), review_status: s(a.review_status), limit: Number(a.limit) || 30, with_content: !!a.full });
+      const rows = await E.listEntries(env, ctx, { project_id: s(a.project_id), category_id: s(a.category_id), since: s(a.since), until: s(a.until), stage: s(a.stage), q: s(a.q), review_status: s(a.review_status), weekly: a.weekly === true, limit: Number(a.limit) || 30, with_content: !!a.full });
       const text = rows.length
-        ? rows.map((e) => `### ${e.date} · ${e.title} (${e.id})\n_${e.project_title} · ${STAGE_LABELS[e.stage]} · ${e.author_name}${e.review_status !== "none" ? ` · ${e.review_status}` : ""}${e.comment_count ? ` · 코멘트 ${e.comment_count}` : ""}_\n${e.content}`).join("\n\n")
+        ? rows.map((e) => `### ${e.date} · ${e.title} (${e.id})\n_${e.project_title} · ${STAGE_LABELS[e.stage]}${e.week ? ` · ${e.week}주차` : ""}${e.weekly ? " · 주간 보고" : ""} · ${e.author_name}${e.review_status !== "none" ? ` · ${e.review_status}` : ""}${e.comment_count ? ` · 코멘트 ${e.comment_count}` : ""}_\n${e.content}`).join("\n\n")
         : "기록 없음";
       return { text, data: rows };
     },
@@ -304,7 +315,7 @@ const TOOLS: ToolDef[] = [
     description: "내가 쓴 기록의 제목·본문·단계·날짜를 수정한다.",
     inputSchema: {
       type: "object",
-      properties: { entry_id: idProp("기록 ID"), title: { type: "string" }, content: { type: "string" }, stage: stageEnum, date: dateProp("연구일") },
+      properties: { entry_id: idProp("기록 ID"), title: { type: "string" }, content: { type: "string" }, stage: stageEnum, date: dateProp("연구일"), weekly: { type: "boolean", description: "주간 보고 표시 켜기/끄기" } },
       required: ["entry_id"],
       additionalProperties: false,
     },
@@ -472,6 +483,22 @@ const TOOLS: ToolDef[] = [
     },
   },
   {
+    name: "weekly_status",
+    title: "주차별 보고 현황 (팀 × 주차)",
+    description: "카테고리(팀)의 프로젝트 × 주차 격자로 주간 보고(weekly=true) 제출 여부를 본다. 이번 주 마감·제출 수·미제출 프로젝트 포함. 카테고리에 1주차 시작일이 설정돼 있어야 한다.",
+    inputSchema: { type: "object", properties: { category_id: idProp("카테고리 ID") }, required: ["category_id"], additionalProperties: false },
+    handler: async (env, ctx, a) => {
+      const d = await W.weeklyStatus(env, ctx, String(a.category_id));
+      if (!d.enabled) return { text: "이 카테고리는 주차 설정(1주차 시작일)이 없습니다. 관리자가 카테고리 설정에서 정하면 사용할 수 있습니다.", data: d };
+      const L = [`# 주차별 보고 현황 · 오늘 ${d.today} = ${d.current_week >= 1 ? `${d.current_week}주차` : "학기 시작 전"}`];
+      if (d.current) L.push(`이번 주(${d.current.n}주차 ${d.current.start}~${d.current.due}) 마감 ${d.current.due} 자정 · 제출 ${d.current.submitted}/${d.current.total}${d.current.missing.length ? ` · 미제출: ${d.current.missing.map((m) => m.title).join(", ")}` : ""}`);
+      L.push("", "| 프로젝트 | " + d.weeks.map((w) => `${w.n}주`).join(" | ") + " | 제출 | 누락 |", "|---|" + d.weeks.map(() => "---").join("|") + "|---|---|");
+      for (const p of d.projects) L.push(`| ${p.title} (${p.id}) | ` + p.cells.map((c, i) => (c.weekly ? "✓" : c.entries ? "·" : d.weeks[i].past ? "✗" : " ")).join(" | ") + ` | ${p.submitted} | ${p.missed} |`);
+      L.push("", "✓ 주간 보고 제출 · ✗ 미제출(지난 주차) · '·' 일반 기록만 있음 · 빈칸 아직 아님");
+      return { text: L.join("\n"), data: d };
+    },
+  },
+  {
     name: "list_teams",
     title: "팀 로비 (전체 팀 목록·가입 상태)",
     description: "연구실의 모든 팀(카테고리)과 구성원·활동 요약, 나의 소속/가입 요청 상태를 본다. 소속 팀이 없거나 다른 팀에 참여하고 싶을 때.",
@@ -545,7 +572,8 @@ const PROMPTS = [
     build: (a: Record<string, string>) =>
       `project_id=${a.project_id} 의 최근 7일 기록(list_entries since=7일 전)과 get_project 를 읽고, ` +
       `(1) 이번 주 진행 요약 (2) 핵심 결과 (3) 막힌 점 (4) 다음 주 계획 을 담은 주간 보고 초안을 작성하세요. ` +
-      `초안이 확정되면 stage=review 또는 해당 단계로 log_progress 에 '주간 정리' 제목으로 저장하고 request_review=true 로 검토를 요청하세요.`,
+      `초안이 확정되면 해당 단계로 log_progress 에 저장하고 request_review=true 로 검토를 요청하세요. ` +
+      `캡스톤 트랙(get_project 에 주차 절이 있으면)은 weekly=true 로 저장하고 제목을 'N주차 주간 보고: 핵심 한 줄' 로 하세요.`,
   },
   {
     name: "research_note_guide",
