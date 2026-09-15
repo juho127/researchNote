@@ -30,7 +30,7 @@ export async function me(env: Env, ctx: AuthContext) {
     my_projects: projects.filter((p) => p.status !== "archived"),
     // 하위 호환: stages = 기본(논문) 트랙. 트랙별 단계·루브릭은 tracks 참고
     stages: TRACKS[DEFAULT_TRACK].stages.map((s) => ({ id: s.id, label: s.label, hint: s.hint })),
-    tracks: Object.fromEntries(Object.values(TRACKS).map((t) => [t.id, { id: t.id, label: t.label, noun: t.noun, description: t.description, stages: t.stages, rubric: t.rubric }])),
+    tracks: Object.fromEntries(Object.values(TRACKS).map((t) => [t.id, { id: t.id, label: t.label, noun: t.noun, description: t.description, stages: t.stages, rubric: t.rubric, reports: t.reports ?? [] }])),
     app: { name: env.APP_NAME, org: env.ORG_NAME, org_sub: env.ORG_SUB, mark: env.ORG_MARK, tz: env.APP_TZ },
   };
 }
