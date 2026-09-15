@@ -1,4 +1,4 @@
-import { state, get, post, patch, put, del, h, mount, pill, avatar, stages, stageLabel, fmtRel, fmtDT, daysSince, input, textarea, field, select, modal, confirmDialog, toast, errToast, copyText, ACTION_LABEL } from "../core.js";
+import { state, get, post, patch, put, del, h, mount, pill, avatar, stages, stageLabel, track, fmtRel, fmtDT, daysSince, input, textarea, field, select, modal, confirmDialog, toast, errToast, copyText, ACTION_LABEL } from "../core.js";
 import { ApiError } from "../core.js";
 import { feedList } from "./home.js";
 
@@ -183,6 +183,13 @@ function categoryDialog(c, body) {
     h("div.row", { style: { marginTop: "8px", gap: "12px", flexWrap: "wrap", alignItems: "flex-end" } }, field("1주차 시작일", weekStart), field("총 주차", weekCount), field("주간 보고 마감", weekDue)),
     h("p.help", { style: { margin: "6px 0 0" } }, "1주차는 시작일부터 첫 마감 요일까지(짧을 수 있음), 이후는 마감 요일 기준 7일 단위입니다."),
   );
+  // 보고서 마감 (트랙 reports): 비우면 주차 기본값
+  const reports = (track(trackSel.value)?.reports) || [];
+  const dueMap = (() => { try { return c?.milestone_due ? JSON.parse(c.milestone_due) : {}; } catch { return {}; } })();
+  const dueInputs = reports.map((r) => ({ r, el: input({ type: "date", value: dueMap[r.id] || "", style: { width: "160px" } }) }));
+  const dueBox = reports.length ? h("div.card.pad-s", { style: { background: "var(--wash)" } },
+    h("div", h("b", "보고서 마감"), h("span.small.muted", " — 비우면 주차 기본값(해당 주차의 마감 요일 자정). 날짜를 넣으면 그날 자정으로 바뀝니다.")),
+    h("div.row", { style: { marginTop: "8px", gap: "12px", flexWrap: "wrap", alignItems: "flex-end" } }, dueInputs.map((d) => field(`${d.r.label} (기본 ${d.r.week}주차)`, d.el)))) : null;
   // 공개 열람 · 핀
   const isPublic = h("input", { type: "checkbox", checked: !!c?.is_public });
   const pin = input({ placeholder: c?.pin_set ? "설정됨 · 바꾸려면 새 핀 입력 (영문·숫자 4~12자)" : "영문·숫자 4~12자 (예: 2026a)", maxlength: 12, autocomplete: "off", spellcheck: false, disabled: !isPublic.checked });
@@ -194,14 +201,14 @@ function categoryDialog(c, body) {
     h("div.form-grid", { style: { marginTop: "8px" } }, h("label.field", h("span", c?.pin_set ? "새 핀 (비우면 유지)" : "핀"), pin, pinHelp), c?.pin_set ? h("label.check", { style: { alignSelf: "end" } }, clearPin, "핀 해제 (열람 중단)") : null),
     h("p.help", { style: { margin: "6px 0 0" } }, "열람자는 프로젝트·기록·단계 정리·공개된 평가·보고서를 볼 수 있고, 구성원 이메일·가입 요청·초안 평가는 보지 못합니다. 열람 페이지: ", h("code", `${location.origin}/#/view`)),
   );
-  modal({ title: c ? "카테고리 수정" : "새 카테고리", wide: true, body: h("div.stack", field("이름", name), field("ID", id), field("설명", desc), field("트랙 (단계 구성·평가 루브릭)", trackSel, c && c.project_count > 0 ? "프로젝트가 있는 카테고리는 트랙을 바꿀 수 없습니다" : "캡스톤 트랙은 팀 프로젝트(협업자)·마일스톤·루프 기반 평가 루브릭을 씁니다"), field("가입 정책", policy, "팀 로비에서의 가입 방식"), publicBox, weekBox, c ? h("label.check", archived, "보관 (목록에서 숨김, 구성원 접근 차단)") : null),
+  modal({ title: c ? "카테고리 수정" : "새 카테고리", wide: true, body: h("div.stack", field("이름", name), field("ID", id), field("설명", desc), field("트랙 (단계 구성·평가 루브릭)", trackSel, c && c.project_count > 0 ? "프로젝트가 있는 카테고리는 트랙을 바꿀 수 없습니다" : "캡스톤 트랙은 팀 프로젝트(협업자)·마일스톤·루프 기반 평가 루브릭을 씁니다"), field("가입 정책", policy, "팀 로비에서의 가입 방식"), publicBox, weekBox, dueBox, c ? h("label.check", archived, "보관 (목록에서 숨김, 구성원 접근 차단)") : null),
     actions: [{ label: "취소" }, { label: c ? "저장" : "만들기", cls: "primary", onClick: async () => {
       if (!name.value.trim()) { toast("이름을 입력하세요", true); return false; }
       const pinVal = pin.value.trim();
       if (isPublic.checked && !c?.pin_set && !pinVal && !clearPin.checked) { toast("공개 열람을 켜려면 핀을 정하세요", true); pin.focus(); return false; }
       const pinField = clearPin.checked ? "" : pinVal || undefined; // undefined = 변경 없음
-      if (c) await patch(`/api/admin/categories/${c.id}`, { name: name.value.trim(), description: desc.value, archived: archived.checked, join_policy: policy.value, track: trackSel.value, is_public: isPublic.checked, pin: pinField, week_start: weekStart.value, week_count: Number(weekCount.value) || 15, week_due_dow: Number(weekDue.value) });
-      else await post("/api/admin/categories", { name: name.value.trim(), description: desc.value, id: id.value.trim() || undefined, join_policy: policy.value, track: trackSel.value, is_public: isPublic.checked, pin: pinField, week_start: weekStart.value, week_count: Number(weekCount.value) || 15, week_due_dow: Number(weekDue.value) });
+      if (c) await patch(`/api/admin/categories/${c.id}`, { name: name.value.trim(), description: desc.value, archived: archived.checked, join_policy: policy.value, track: trackSel.value, is_public: isPublic.checked, pin: pinField, week_start: weekStart.value, week_count: Number(weekCount.value) || 15, week_due_dow: Number(weekDue.value), milestone_due: Object.fromEntries(dueInputs.map((d) => [d.r.id, d.el.value])) });
+      else await post("/api/admin/categories", { name: name.value.trim(), description: desc.value, id: id.value.trim() || undefined, join_policy: policy.value, track: trackSel.value, is_public: isPublic.checked, pin: pinField, week_start: weekStart.value, week_count: Number(weekCount.value) || 15, week_due_dow: Number(weekDue.value), milestone_due: Object.fromEntries(dueInputs.map((d) => [d.r.id, d.el.value])) });
       toast("저장했습니다"); state.me = null; window.dispatchEvent(new Event("rn:refresh"));
     } }] });
 }

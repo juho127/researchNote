@@ -292,3 +292,9 @@ label.check.small{font-size:12.5px;color:var(--muted)}
 .wk-grid td.miss{color:var(--bad);font-weight:700}
 .wk-grid td.wait{color:var(--warn)}
 .wk-grid td.num{text-align:center;font-variant-numeric:tabular-nums}
+
+/* 보고서 제출·평가 */
+.pdf-frame{width:100%;height:72vh;border:1px solid var(--rule);border-radius:9px;background:#fff}
+.rep-ms{min-width:220px;padding:8px 12px;border:1px solid var(--rule);border-radius:9px;background:#fff}
+.rep-grid td{vertical-align:top}
+input.input[type=file]{padding:6px;max-width:340px}

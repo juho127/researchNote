@@ -1,6 +1,9 @@
 export interface Env {
   DB: D1Database;
   ASSETS: Fetcher;
+  /** 보고서 제출 파일 저장소: R2(FILES_R2) 를 우선 쓰고, 없으면 KV(FILES, 값당 25 MiB) */
+  FILES_R2?: R2Bucket;
+  FILES?: KVNamespace;
   APP_NAME: string;
   ORG_NAME: string;
   ORG_SUB: string;
@@ -77,6 +80,17 @@ export interface RubricAxis {
   hint?: string;
 }
 
+/** 보고서 제출 마일스톤 (캡스톤): 주차 기준 기본 마감, 카테고리에서 날짜로 덮어쓸 수 있다 */
+export interface ReportDef {
+  id: string;
+  label: string;
+  /** 기본 마감 주차 (해당 주차의 마감 요일 자정) */
+  week: number;
+  /** 평가가 귀속되는 단계 */
+  stage: string;
+  hint?: string;
+}
+
 export interface TrackDef {
   id: string;
   label: string;
@@ -86,6 +100,8 @@ export interface TrackDef {
   stages: StageDef[];
   /** 평가 루브릭 (평가자가 마일스톤마다 점수를 매기는 축) */
   rubric: RubricAxis[];
+  /** 보고서 제출 마일스톤 (없으면 제출 기능 꺼짐) */
+  reports?: ReportDef[];
 }
 
 export const TRACKS: Record<string, TrackDef> = {
@@ -122,6 +138,11 @@ export const TRACKS: Record<string, TrackDef> = {
       { id: "business", label: "사업성·최종보고", hint: "루프별 기록 정리, 3년 손익·사업성 분석, 최종보고서 작성 (A4 20쪽 이내, 지정 목차)", milestone: "12주차 최종보고서" },
       { id: "final", label: "최종 발표", hint: "발표 자료·시연 준비, Q&A 대응 (발표자 랜덤 선정이므로 전원 준비)", milestone: "기말 최종 발표" },
     ],
+    reports: [
+      { id: "report1", label: "1차 보고서", week: 4, stage: "market", hint: "주제·시장·사업모델, 린 캔버스 v1" },
+      { id: "report2", label: "2차 보고서(중간)", week: 8, stage: "feedback", hint: "MVP 배포·피드백 루프·회고" },
+      { id: "final", label: "최종보고서", week: 12, stage: "business", hint: "A4 20쪽 이내, 지정 목차" },
+    ],
     rubric: [
       { id: "improvement", label: "직전 대비 개선도", max: 30, hint: "이전 루프·보고서 대비 무엇이 나아졌나" },
       { id: "achievement", label: "목표 대비 달성률", max: 30, hint: "스스로 세운 목표를 얼마나 달성했나" },
@@ -136,6 +157,9 @@ export const DEFAULT_TRACK = "paper";
 
 export function trackOf(id: unknown): TrackDef {
   return TRACKS[typeof id === "string" && TRACKS[id] ? id : DEFAULT_TRACK];
+}
+export function reportsOf(id: unknown): ReportDef[] {
+  return trackOf(id).reports ?? [];
 }
 export function isTrack(v: unknown): v is string {
   return typeof v === "string" && !!TRACKS[v];

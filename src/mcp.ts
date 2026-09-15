@@ -18,6 +18,7 @@ import * as E from "./services/entries";
 import * as T from "./services/tasks";
 import * as F from "./services/feed";
 import * as W from "./services/weekly";
+import * as SB from "./services/submissions";
 import * as R from "./services/report";
 import * as TM from "./services/teams";
 import * as EV from "./services/evaluations";
@@ -217,7 +218,8 @@ const TOOLS: ToolDef[] = [
       type: "object",
       properties: {
         project_id: idProp("프로젝트 ID"),
-        stage: { ...stageEnum, description: "평가 대상 단계 (생략 시 현재 단계)" },
+        stage: { ...stageEnum, description: "평가 대상 단계 (생략 시 현재 단계). submission_id 를 주면 무시" },
+        submission_id: { type: "string", description: "보고서 제출물 ID (list_submissions 로 확인). 주면 제출물 평가로 저장되며 블라인드·초안이 되고 리드가 publish_evaluations 로 일괄 공개. 같은 평가자가 다시 쓰면 갱신" },
         title: { type: "string", description: "예: 1차 보고서 평가" },
         scores: { type: "object", description: "{축id: 점수}" },
         feedback: { type: "string", description: "피드백 (마크다운)" },
@@ -227,7 +229,7 @@ const TOOLS: ToolDef[] = [
       additionalProperties: false,
     },
     handler: async (env, ctx, a) => {
-      const ev = await EV.createEvaluation(env, ctx, String(a.project_id), { stage: a.stage, title: a.title, scores: a.scores, feedback: a.feedback, visible: a.visible });
+      const ev = await EV.createEvaluation(env, ctx, String(a.project_id), { stage: a.stage, submission_id: a.submission_id, title: a.title, scores: a.scores, feedback: a.feedback, visible: a.visible });
       return { text: `평가 저장됨: ${ev.title} (${ev.id})${ev.total !== null ? ` · ${ev.total}/${ev.max_total}` : ""}`, data: ev };
     },
   },
@@ -496,6 +498,60 @@ const TOOLS: ToolDef[] = [
       for (const p of d.projects) L.push(`| ${p.title} (${p.id}) | ` + p.cells.map((c, i) => (c.weekly ? "✓" : c.entries ? "·" : d.weeks[i].past ? "✗" : " ")).join(" | ") + ` | ${p.submitted} | ${p.missed} |`);
       L.push("", "✓ 주간 보고 제출 · ✗ 미제출(지난 주차) · '·' 일반 기록만 있음 · 빈칸 아직 아님");
       return { text: L.join("\n"), data: d };
+    },
+  },
+  {
+    name: "list_submissions",
+    title: "보고서 제출·평가 현황 (캡스톤)",
+    description: "project_id 를 주면 그 프로젝트의 마일스톤(1차·중간·최종)별 마감·제출 버전·평가 요약을, category_id 를 주면 팀 × 마일스톤 현황표를 본다. 평가자는 자기 평가만, 학생은 공개된 평가만 보인다.",
+    inputSchema: { type: "object", properties: { project_id: idProp("프로젝트 ID"), category_id: idProp("카테고리 ID") }, additionalProperties: false },
+    handler: async (env, ctx, a) => {
+      if (a.project_id) {
+        const d = await SB.listForProject(env, ctx, String(a.project_id));
+        if (!d.enabled) return { text: "이 트랙에는 보고서 제출 마일스톤이 없습니다.", data: d };
+        const L = [`# 보고서 제출·평가 (오늘 ${d.today})`];
+        for (const m of d.milestones) {
+          const latest = d.submissions.find((s) => s.milestone === m.id);
+          const sm = d.summary[m.id];
+          L.push(`- **${m.label}** (${m.id}) · 마감 ${m.due ?? "없음"}${m.passed ? " (지남)" : ""}${m.overridden ? " · 카테고리 설정" : ""} · ${latest ? `제출 v${latest.version} ${latest.created_at.slice(0, 10)}${latest.late ? " 지각" : ""} (submission_id=${latest.id})` : "미제출"} · 평가 ${sm?.count ?? 0}건${sm?.avg_total !== null && sm?.avg_total !== undefined ? ` 평균 ${sm.avg_total}/${d.max_total}` : ""}${sm?.published ? " · 공개됨" : sm?.count ? " · 비공개" : ""}`);
+        }
+        if (d.evaluations.length) {
+          L.push("", "## 평가");
+          for (const e of d.evaluations) L.push(`- [${e.milestone}] ${e.title} · ${e.evaluator_name} · ${e.total ?? "-"}/${d.max_total} · ${e.visible ? "공개" : "초안"} (${e.id})${e.feedback ? `\n  ${e.feedback.slice(0, 200).replace(/\n/g, " ")}` : ""}`);
+        }
+        return { text: L.join("\n"), data: d };
+      }
+      if (!a.category_id) return { text: "project_id 또는 category_id 를 지정하세요", data: null };
+      const d = await SB.categoryStatus(env, ctx, String(a.category_id));
+      if (!d.enabled) return { text: "이 카테고리 트랙에는 보고서 제출 마일스톤이 없습니다.", data: d };
+      const L = [`# 보고서 제출 현황 (오늘 ${d.today})`, "", "| 프로젝트 | " + d.milestones.map((m) => `${m.label} (마감 ${m.due ?? "-"})`).join(" | ") + " |", "|---|" + d.milestones.map(() => "---").join("|") + "|"];
+      for (const p of d.projects) L.push(`| ${p.title} | ` + d.milestones.map((m) => { const c = p.cells[m.id]; return `${c.submission ? `v${c.submission.version} ${c.submission.created_at.slice(5, 10)}${c.submission.late ? " 지각" : ""}` : "미제출"} · 평가 ${c.visible_count}/${c.eval_count}${c.avg_total !== null ? ` 평균 ${c.avg_total}` : ""}`; }).join(" | ") + " |");
+      L.push("", "공개 상태: " + d.milestones.map((m) => `${m.label} ${d.publish[m.id].published ? "공개" : `비공개(${d.publish[m.id].visible}/${d.publish[m.id].total})`}`).join(" · "));
+      return { text: L.join("\n"), data: d };
+    },
+  },
+  {
+    name: "evaluation_summary",
+    title: "보고서 평가 점수표 (리드·관리자)",
+    description: "카테고리의 마일스톤 하나에 대해 프로젝트 × 평가자 점수표와 프로젝트별 평균·표준편차를 본다. CSV 는 웹 팀 페이지 [보고서] 탭에서 내려받는다.",
+    inputSchema: { type: "object", properties: { category_id: idProp("카테고리 ID"), milestone: { type: "string", description: "report1 | report2 | final" } }, required: ["category_id", "milestone"], additionalProperties: false },
+    handler: async (env, ctx, a) => {
+      const s = await SB.evaluationSummary(env, ctx, String(a.category_id), a.milestone);
+      const L = [`# ${s.milestone.label} 점수표 · 마감 ${s.milestone.due ?? "-"} · 평가자 ${s.evaluators.map((e) => `${e.name}(${e.n})`).join(", ") || "없음"}`, "", "| 프로젝트 | 평가자 | " + s.rubric.map((x) => `${x.label}(${x.max})`).join(" | ") + ` | 합계(${s.max_total}) | 공개 |`, "|---|---|" + s.rubric.map(() => "---").join("|") + "|---|---|"];
+      for (const r of s.rows) L.push(`| ${r.project_title} | ${r.evaluator_name} | ` + s.rubric.map((x) => r.scores[x.id] ?? "-").join(" | ") + ` | ${r.total ?? "-"} | ${r.visible ? "Y" : "N"} |`);
+      L.push("", "| 프로젝트 | 평가 수 | " + s.rubric.map((x) => `${x.label} 평균`).join(" | ") + " | 평균 | 표준편차 | 제출 |", "|---|---|" + s.rubric.map(() => "---").join("|") + "|---|---|---|");
+      for (const p of s.projects) L.push(`| ${p.title} | ${p.n} | ` + s.rubric.map((x) => p.axis_avg[x.id] ?? "-").join(" | ") + ` | ${p.avg_total ?? "-"} | ${p.stdev ?? "-"} | ${p.submitted ? "Y" : "N"} |`);
+      return { text: L.join("\n"), data: s };
+    },
+  },
+  {
+    name: "publish_evaluations",
+    title: "보고서 평가 일괄 공개/비공개 (리드·관리자)",
+    description: "마일스톤의 제출물 평가를 팀에게 한꺼번에 공개(또는 다시 비공개)한다. 평가자 이름은 학생에게 익명으로 보인다.",
+    inputSchema: { type: "object", properties: { category_id: idProp("카테고리 ID"), milestone: { type: "string", description: "report1 | report2 | final" }, visible: { type: "boolean", description: "기본 true (공개). false 면 비공개로 되돌림" } }, required: ["category_id", "milestone"], additionalProperties: false },
+    handler: async (env, ctx, a) => {
+      const r = await SB.publishEvaluations(env, ctx, String(a.category_id), a.milestone, a.visible);
+      return { text: `${r.milestone} 평가 ${r.visible ? "공개" : "비공개"} 처리: ${r.changed}건`, data: r };
     },
   },
   {

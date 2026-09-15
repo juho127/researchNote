@@ -1,5 +1,5 @@
 import { DOW, weekOf, weekRange, shortDate } from "../week.js";
-import { state, get, post, patch, put, del, h, mount, clear, pill, avatar, stages, stageLabel, stageHint, stageMilestone, stageIndex, stageSelect, track as trackDef, ROLE_LABEL, fmtRel, fmtDT, weekday, today, daysAgo, input, textarea, field, select, modal, confirmDialog, toast, errToast, mdEl, openReport, downloadFile, projectProgress, STATUS_LABEL, STAGE_STATUS_LABEL, REVIEW_LABEL, REVIEW_CLASS } from "../core.js";
+import { state, getToken, api, get, post, patch, put, del, h, mount, clear, pill, avatar, stages, stageLabel, stageHint, stageMilestone, stageIndex, stageSelect, track as trackDef, ROLE_LABEL, fmtRel, fmtDT, weekday, today, daysAgo, input, textarea, field, select, modal, confirmDialog, toast, errToast, mdEl, openReport, downloadFile, projectProgress, STATUS_LABEL, STAGE_STATUS_LABEL, REVIEW_LABEL, REVIEW_CLASS } from "../core.js";
 
 let current = null; // { project, tab, filters }
 
@@ -57,7 +57,7 @@ function draw(container) {
   );
 
   const tabs = h("div.tabs");
-  const tabDefs = [["timeline", "타임라인", p.entry_count], ["stages", "단계별 정리", p.stage_done + "/" + p.stages.length], ["tasks", "할 일", p.open_tasks], ["evaluations", "평가·피드백"], ["members", "팀"]];
+  const tabDefs = [["timeline", "타임라인", p.entry_count], ["stages", "단계별 정리", p.stage_done + "/" + p.stages.length], ["tasks", "할 일", p.open_tasks], ...(p.track === "capstone" ? [["reports", "보고서"]] : []), ["evaluations", "평가·피드백"], ["members", "팀"]];
   for (const [k, l, n] of tabDefs) tabs.append(h("button", { class: current.tab === k ? "active" : "", onclick: () => { current.tab = k; draw(container); } }, l, n !== undefined && n !== null ? h("span.n", String(n)) : null));
 
   const body = h("div");
@@ -66,6 +66,7 @@ function draw(container) {
   else if (current.tab === "stages") renderStages(body, container);
   else if (current.tab === "tasks") renderTasks(body, container);
   else if (current.tab === "evaluations") renderEvaluations(body, container);
+  else if (current.tab === "reports") renderReports(body, container);
   else renderMembers(body, container);
 }
 
@@ -425,13 +426,14 @@ async function renderEvaluations(body, container) {
   const p = current.project;
   const me = state.me;
   mount(body, h("div.loading", h("span.spinner")));
-  const data = await get(`/api/projects/${p.id}/evaluations`);
+  const rawData = await get(`/api/projects/${p.id}/evaluations`);
+  const data = { ...rawData, evaluations: (rawData.evaluations || []).filter((e) => !e.submission_id) };
   const rubric = data.rubric || [];
   const max = rubric.reduce((a, x) => a + x.max, 0);
   const list = stages(p.track);
   const groups = list.map((s) => ({ s, evs: data.evaluations.filter((e) => e.stage === s.id) })).filter((g) => g.evs.length || g.s.id === p.stage);
   const head = h("div.row", { style: { marginBottom: "12px" } },
-    h("p.small.muted", { style: { margin: 0, flex: 1 } }, `평가자(리드·평가자·관리자, 여러 명 가능)가 마일스톤마다 루브릭으로 채점하고 피드백을 남기면 팀이 답변합니다. 루브릭: ${rubric.map((x) => `${x.label} ${x.max}`).join(" · ")} (만점 ${max})`),
+    h("p.small.muted", { style: { margin: 0, flex: 1 } }, `평가자(리드·평가자·관리자, 여러 명 가능)가 마일스톤마다 루브릭으로 채점하고 피드백을 남기면 팀이 답변합니다. 루브릭: ${rubric.map((x) => `${x.label} ${x.max}`).join(" · ")} (만점 ${max})${p.track === "capstone" ? " · 보고서(PDF) 평가는 [보고서] 탭에서 합니다. 여기는 발표 등 그 밖의 평가." : ""}`),
     p.can_evaluate ? h("button.btn.primary", { onclick: () => evaluationEditor(p, null, rubric, container) }, "+ 평가 작성") : null);
   if (!data.evaluations.length) { mount(body, head, h("div.empty", p.can_evaluate ? "아직 평가가 없습니다. [+ 평가 작성]으로 첫 평가를 남기세요." : "아직 평가가 없습니다.")); return; }
   const sections = [];
@@ -452,7 +454,7 @@ function evaluationCard(ev, p, rubric, max, container) {
   const respBox = h("div.comments", { style: { marginTop: "10px" } });
   const drawResp = () => {
     const ta = textarea({ value: ev.response || "", rows: 4, placeholder: "평가 의견에 대한 팀의 답변 · 반영 계획 · 반박 (마크다운). 다음 보고서에 '평가의견 답변'으로 첨부됩니다." });
-    const editing = h("div.stack", { style: { display: "none" } }, ta, h("div.row", { style: { justifyContent: "flex-end" } }, h("button.btn.sm.primary", { onclick: async () => { try { await post(`/api/evaluations/${ev.id}/respond`, { response: ta.value }); toast("답변을 저장했습니다"); renderEvaluations(container.querySelector(".tabs")?.nextSibling || container, container); } catch (e) { errToast(e); } } }, "답변 저장")));
+    const editing = h("div.stack", { style: { display: "none" } }, ta, h("div.row", { style: { justifyContent: "flex-end" } }, h("button.btn.sm.primary", { onclick: async () => { try { await post(`/api/evaluations/${ev.id}/respond`, { response: ta.value }); toast("답변을 저장했습니다"); reload(container); } catch (e) { errToast(e); } } }, "답변 저장")));
     const toggle = ev.can_respond ? h("button.btn.ghost.xs", { onclick: () => { editing.style.display = editing.style.display === "none" ? "" : "none"; if (editing.style.display === "") ta.focus(); } }, ev.response ? "답변 수정" : "답변 작성") : null;
     mount(respBox, h("div.row", h("b", "팀 답변"), ev.response_by_name ? h("span.tiny.muted", `${ev.response_by_name} · ${fmtDT(ev.response_at)}`) : null, h("span.spacer"), toggle), ev.response ? mdEl(ev.response) : h("div.small.muted", "아직 답변이 없습니다"), editing);
   };
@@ -468,9 +470,10 @@ function evaluationCard(ev, p, rubric, max, container) {
   );
 }
 
-function evaluationEditor(p, ev, rubric, container) {
+function evaluationEditor(p, ev, rubric, container, opts = {}) {
+  const fixed = !!(opts.submission || (ev && ev.milestone));
   const stage = select(stages(p.track).map((s) => ({ value: s.id, label: s.milestone ? `${s.label} (${s.milestone})` : s.label })), { value: ev?.stage || p.stage });
-  const title = input({ value: ev?.title || "", placeholder: `예: ${stageMilestone(p.stage) || stageLabel(p.stage) + " 평가"}`, maxlength: 200 });
+  const title = input({ value: ev?.title || (opts.submission ? `${opts.submission.label} 평가` : ""), placeholder: `예: ${stageMilestone(p.stage) || stageLabel(p.stage) + " 평가"}`, maxlength: 200 });
   const inputs = rubric.map((x) => ({ x, el: input({ type: "number", min: 0, max: x.max, step: 0.5, value: ev?.scores?.[x.id] ?? "", placeholder: `0~${x.max}`, style: { width: "110px" } }) }));
   const totalEl = h("span.pill.ok", "");
   const recalc = () => { const vals = inputs.map((i) => i.el.value).filter((v) => v !== ""); totalEl.textContent = vals.length ? `합계 ${Math.round(vals.reduce((a, v) => a + Number(v), 0) * 10) / 10} / ${rubric.reduce((a, x) => a + x.max, 0)}` : "점수 없음"; };
@@ -480,20 +483,129 @@ function evaluationEditor(p, ev, rubric, container) {
   modal({
     title: ev ? "평가 수정" : "평가 작성", wide: true,
     body: h("div.stack",
-      h("div.form-grid", field("대상 단계(마일스톤)", stage), field("제목", title)),
+      fixed ? h("div.form-grid", field("대상", h("div.small", { style: { paddingTop: "8px", fontWeight: 600 } }, opts.submission?.label || `${ev?.milestone || ""} 제출물`)), field("제목", title)) : h("div.form-grid", field("대상 단계(마일스톤)", stage), field("제목", title)),
       h("div.field", h("span", "루브릭 점수 (비워도 됨)"), h("div.grid.c2", inputs.map((i) => h("div.row", i.el, h("div", h("div.small", { style: { fontWeight: 600 } }, `${i.x.label} (${i.x.max})`), i.x.hint ? h("div.tiny.muted", i.x.hint) : null)))), h("div", { style: { marginTop: "6px" } }, totalEl)),
       field("피드백 (마크다운)", feedback),
-      h("label.check", visible, "팀에게 공개 (끄면 초안: 평가자·리드·관리자만 봄)"),
+      fixed ? h("p.help", "제출물 평가는 초안으로 저장되고 리드가 마일스톤 단위로 팀에 일괄 공개합니다. 다른 평가자에게는 보이지 않고, 학생에게는 '평가자 N' 으로 익명 표시됩니다.") : h("label.check", visible, "팀에게 공개 (끄면 초안: 평가자·리드·관리자만 봄)"),
     ),
     actions: [{ label: "취소" }, { label: ev ? "저장" : "평가 저장", cls: "primary", onClick: async () => {
       const scores = {}; for (const i of inputs) if (i.el.value !== "") scores[i.x.id] = Number(i.el.value);
-      const body = { stage: stage.value, title: title.value.trim(), scores, feedback: feedback.value, visible: visible.checked };
+      const body = { title: title.value.trim(), scores, feedback: feedback.value };
+      if (!fixed) { body.stage = stage.value; body.visible = visible.checked; }
+      if (opts.submission) body.submission_id = opts.submission.id;
       if (ev) await patch(`/api/evaluations/${ev.id}`, body); else await post(`/api/projects/${p.id}/evaluations`, body);
       toast(ev ? "수정했습니다" : "평가를 저장했습니다");
-      current.tab = "evaluations";
+      current.tab = opts.tab || "evaluations";
       reload(container);
     } }],
   });
+}
+
+// ---------- 보고서 제출·평가 (캡스톤) ----------
+async function uploadForm(path, fd) {
+  const headers = { "X-Client": "web" };
+  const tok = getToken();
+  if (tok) headers.Authorization = `Bearer ${tok}`;
+  const r = await fetch(path, { method: "POST", headers, body: fd });
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(data.message || `HTTP ${r.status}`);
+  return data;
+}
+async function fileBlobUrl(id) {
+  const r = await api("GET", `/api/submissions/${id}/file`, undefined, { raw: true });
+  if (!r.ok) { let m = `파일 열기 실패 (${r.status})`; try { const j = await r.json(); if (j.message) m = j.message; } catch {} throw new Error(m); }
+  return URL.createObjectURL(await r.blob());
+}
+function dday(due, today) {
+  const n = (d) => Date.UTC(+d.slice(0, 4), +d.slice(5, 7) - 1, +d.slice(8, 10));
+  const d = Math.round((n(due) - n(today)) / 86400000);
+  return d > 0 ? `D-${d}` : d === 0 ? "오늘 마감" : `마감 ${-d}일 지남`;
+}
+
+async function renderReports(body, container) {
+  const p = current.project;
+  const me = state.me;
+  mount(body, h("div.loading", h("span.spinner")));
+  let d;
+  try { d = await get(`/api/projects/${p.id}/submissions`); } catch (e) { mount(body, h("div.empty", e.message)); return; }
+  if (!d.enabled) { mount(body, h("div.empty", "이 트랙에는 보고서 제출 마일스톤이 없습니다.")); return; }
+  const rubric = d.rubric || [];
+  const max = d.max_total;
+  const cards = d.milestones.map((m) => {
+    const subs = d.submissions.filter((s) => s.milestone === m.id);
+    const latest = subs[0] || null;
+    const sm = d.summary[m.id] || {};
+    const evs = d.evaluations.filter((e) => e.milestone === m.id);
+    const status = latest ? pill(`제출 v${latest.version}${latest.late ? " · 지각" : ""}`, latest.late ? "warn" : "ok") : m.passed ? pill("미제출 · 마감 지남", "bad") : pill("미제출", "mute");
+
+    // 제출 파일
+    const viewer = h("div", { style: { display: "none", marginTop: "10px" } });
+    const openInline = async () => { try { const url = await fileBlobUrl(latest.id); mount(viewer, h("iframe.pdf-frame", { src: url, title: latest.filename })); viewer.style.display = ""; } catch (e) { errToast(e); } };
+    const openTab = async () => { const w = window.open("", "_blank"); try { const url = await fileBlobUrl(latest.id); if (w) w.location = url; else window.open(url, "_blank"); } catch (e) { if (w) w.close(); errToast(e); } };
+    const fileRow = latest
+      ? h("div.row", { style: { gap: "8px", flexWrap: "wrap" } },
+          h("b", latest.filename), h("span.small.muted", `${(latest.size / 1024 / 1024).toFixed(1)} MB · ${latest.submitted_by_name} · ${fmtDT(latest.created_at)}`), latest.note ? h("span.small", `— ${latest.note}`) : null,
+          h("span.spacer"),
+          me.viewer ? h("span.tiny.muted", "열람 모드에서는 파일을 열 수 없습니다") : [h("button.btn.xs", { onclick: openInline }, "미리보기"), h("button.btn.xs", { onclick: openTab }, "새 탭"), h("button.btn.xs", { onclick: () => downloadFile(`/api/submissions/${latest.id}/file?download=1`, latest.filename) }, "내려받기")],
+          d.can_submit && (d.is_lead || latest.submitted_by === me.user.id) ? h("button.btn.xs.danger", { onclick: async () => { if (await confirmDialog(`v${latest.version} 제출물을 삭제할까요?`, { danger: true, okLabel: "삭제" })) { try { await del(`/api/submissions/${latest.id}`); toast("삭제했습니다"); reload(container); } catch (e) { errToast(e); } } } }, "삭제") : null)
+      : h("div.small.muted", "아직 제출된 파일이 없습니다");
+    const history = subs.length > 1
+      ? h("details", { style: { marginTop: "6px" } }, h("summary.small.muted", `이전 버전 ${subs.length - 1}개`),
+          h("ul.small", { style: { margin: "6px 0 0", paddingLeft: "18px" } }, subs.slice(1).map((s) => h("li", `v${s.version} · ${s.filename} · ${fmtDT(s.created_at)}${s.late ? " · 지각" : ""} `, me.viewer ? null : h("a", { href: "#", onclick: (e) => { e.preventDefault(); downloadFile(`/api/submissions/${s.id}/file?download=1`, s.filename); } }, "내려받기")))))
+      : null;
+
+    // 제출 폼
+    let form = null;
+    if (d.can_submit && p.status === "active") {
+      const file = h("input.input", { type: "file", accept: "application/pdf,.pdf" });
+      const note = input({ placeholder: "제출 메모 (선택)", maxlength: 200, style: { flex: 1, minWidth: "180px" } });
+      const btn = h("button.btn.sm.primary", { onclick: async () => {
+        if (!file.files?.length) { toast("PDF 파일을 선택하세요", true); return; }
+        const f = file.files[0];
+        if (f.size > 20 * 1024 * 1024) { toast("20 MB 이하만 제출할 수 있습니다", true); return; }
+        btn.disabled = true;
+        try {
+          const fd = new FormData(); fd.append("milestone", m.id); fd.append("note", note.value); fd.append("file", f);
+          await uploadForm(`/api/projects/${p.id}/submissions`, fd);
+          toast(`${m.label} v${(latest?.version || 0) + 1} 제출 완료`); reload(container);
+        } catch (e) { errToast(e); btn.disabled = false; }
+      } }, latest ? "새 버전 제출" : "제출");
+      form = h("div.row", { style: { gap: "8px", flexWrap: "wrap", marginTop: "10px", paddingTop: "10px", borderTop: "1px dashed var(--rule)" } }, file, note, btn, h("span.tiny.muted", "PDF, 20 MB 이하. 마감 후 제출은 '지각'으로 표시됩니다"));
+    }
+
+    // 평가
+    let evalBox;
+    const editorOpts = latest ? { submission: { id: latest.id, label: `${m.label} (v${latest.version})` }, tab: "reports" } : null;
+    const publishBtn = d.is_lead && sm.count
+      ? h("button.btn.xs" + (sm.published ? "" : ".primary"), { onclick: async () => { try { await post(`/api/categories/${p.category_id}/evaluations/publish`, { milestone: m.id, visible: !sm.published }); toast(sm.published ? "비공개로 돌렸습니다" : "카테고리 전체 팀에게 공개했습니다"); reload(container); } catch (e) { errToast(e); } } }, sm.published ? "비공개로" : `${m.label} 평가 일괄 공개`)
+      : null;
+    if (d.can_evaluate && !d.is_lead) {
+      const mine = evs.find((e) => latest && e.submission_id === latest.id) || evs[evs.length - 1] || null;
+      const stale = mine && latest && mine.submission_id !== latest.id;
+      evalBox = h("div",
+        h("div.row", { style: { flexWrap: "wrap", gap: "8px" } }, h("b", "내 평가"), stale ? pill("이전 버전 평가", "warn sm") : null, h("span.spacer"),
+          latest ? h("button.btn.xs.primary", { onclick: () => evaluationEditor(p, stale ? null : mine, rubric, container, editorOpts) }, mine && !stale ? "수정" : "+ 평가 작성") : h("span.tiny.muted", "제출물이 올라오면 평가할 수 있습니다")),
+        mine ? evaluationCard(mine, p, rubric, max, container) : h("div.small.muted", { style: { marginTop: "6px" } }, "아직 평가하지 않았습니다. 다른 평가자의 평가는 보이지 않습니다(블라인드)."));
+    } else if (d.is_lead) {
+      evalBox = h("div",
+        h("div.row", { style: { flexWrap: "wrap", gap: "8px" } }, h("b", `평가 ${sm.count || 0}건`), h("span.small.muted", `공개 ${sm.visible_count || 0}건${sm.avg_total !== null && sm.avg_total !== undefined ? ` · 평균 ${sm.avg_total}/${max}` : ""}`), h("span.spacer"),
+          latest ? h("button.btn.xs", { onclick: () => evaluationEditor(p, null, rubric, container, editorOpts) }, "+ 내 평가") : null, publishBtn),
+        evs.length ? h("div.stack", { style: { marginTop: "8px" } }, evs.map((ev) => evaluationCard(ev, p, rubric, max, container))) : null);
+    } else if (sm.published && evs.length) {
+      evalBox = h("div",
+        h("div.row", { style: { flexWrap: "wrap", gap: "6px" } }, h("b", `평가 ${evs.length}건`), sm.avg_total !== null && sm.avg_total !== undefined ? pill(`평균 ${sm.avg_total}/${max}`, "ok") : null, ...rubric.filter((x) => sm.axis_avg?.[x.id] !== undefined).map((x) => h("span.tag", `${x.label} ${sm.axis_avg[x.id]}/${x.max}`))),
+        h("div.stack", { style: { marginTop: "8px" } }, evs.map((ev) => evaluationCard(ev, p, rubric, max, container))));
+    } else {
+      evalBox = h("div.small.muted", sm.count ? `평가 진행 중 (${sm.count}건 · 리드가 공개하면 여기에 표시됩니다)` : "아직 평가가 없습니다");
+    }
+
+    return h("div.card", { style: { marginBottom: "14px" } },
+      h("div.row", { style: { flexWrap: "wrap", gap: "8px" } }, h("h3", { style: { margin: 0 } }, m.label), status, h("span.small.muted", m.due ? `마감 ${shortDate(m.due)} 24:00 · ${dday(m.due, d.today)}${m.overridden ? " (변경됨)" : ""}` : "마감 없음"), m.hint ? h("span.tiny.muted", `· ${m.hint}`) : null),
+      h("div", { style: { marginTop: "10px" } }, fileRow, history, viewer, form),
+      h("div", { style: { marginTop: "14px", paddingTop: "10px", borderTop: "1px solid var(--rule)" } }, evalBox),
+    );
+  });
+  mount(body, h("p.small.muted", { style: { marginBottom: "12px" } }, `마일스톤별 PDF 보고서를 제출하고 평가를 받습니다. 루브릭: ${rubric.map((x) => `${x.label} ${x.max}`).join(" · ")} (만점 ${max}). 평가는 블라인드로 진행되고 리드가 마일스톤 단위로 일괄 공개합니다.`), ...cards);
 }
 
 // ---------- 프로젝트 수정 / 보고서 ----------

@@ -24,6 +24,8 @@ export interface CategoryRow {
   week_start: string | null;
   week_count: number;
   week_due_dow: number;
+  /** 보고서 마감 덮어쓰기 JSON {마일스톤id: 'YYYY-MM-DD'} (없으면 주차 기본값) */
+  milestone_due: string | null;
   created_at: string;
   archived_at: string | null;
   member_count?: number;
@@ -60,11 +62,11 @@ async function loadCategory(env: Env, id: string): Promise<CategoryRow> {
 
 const JOIN_POLICIES = ["open", "approval", "closed"] as const;
 
-type WeekInput = { week_start?: unknown; week_count?: unknown; week_due_dow?: unknown };
+type WeekInput = { week_start?: unknown; week_count?: unknown; week_due_dow?: unknown; milestone_due?: unknown };
 
 /** 주차 설정 입력 파싱: week_start(YYYY-MM-DD, 빈 문자열 = 해제), week_count(1~30), week_due_dow(0~6) */
-function parseWeekInput(input: WeekInput): { week_start?: string | null; week_count?: number; week_due_dow?: number } {
-  const out: { week_start?: string | null; week_count?: number; week_due_dow?: number } = {};
+function parseWeekInput(input: WeekInput): { week_start?: string | null; week_count?: number; week_due_dow?: number; milestone_due?: string | null } {
+  const out: { week_start?: string | null; week_count?: number; week_due_dow?: number; milestone_due?: string | null } = {};
   if (input.week_start !== undefined && input.week_start !== null) {
     const v = str(input.week_start, 10);
     if (v && !isDateStr(v)) bad("week_start 는 YYYY-MM-DD 형식");
@@ -72,6 +74,22 @@ function parseWeekInput(input: WeekInput): { week_start?: string | null; week_co
   }
   if (input.week_count !== undefined && input.week_count !== null && input.week_count !== "") out.week_count = clampInt(input.week_count, 15, 1, 30);
   if (input.week_due_dow !== undefined && input.week_due_dow !== null && input.week_due_dow !== "") out.week_due_dow = clampInt(input.week_due_dow, 6, 0, 6);
+  if (input.milestone_due !== undefined) {
+    if (input.milestone_due === null || input.milestone_due === "") out.milestone_due = null;
+    else {
+      let o: unknown = input.milestone_due;
+      if (typeof o === "string") { try { o = JSON.parse(o); } catch { bad("milestone_due 는 {마일스톤id: 'YYYY-MM-DD'} 객체여야 합니다"); } }
+      if (!o || typeof o !== "object" || Array.isArray(o)) bad("milestone_due 는 {마일스톤id: 'YYYY-MM-DD'} 객체여야 합니다");
+      const m: Record<string, string> = {};
+      for (const [k, v] of Object.entries(o as Record<string, unknown>)) {
+        if (v === null || v === undefined || v === "") continue;
+        const d = str(v, 10);
+        if (!isDateStr(d)) bad(`${k} 마감은 YYYY-MM-DD 형식이어야 합니다`);
+        m[k] = d;
+      }
+      out.milestone_due = Object.keys(m).length ? JSON.stringify(m) : null;
+    }
+  }
   return out;
 }
 
@@ -94,8 +112,8 @@ export async function createCategory(env: Env, ctx: AuthContext, input: { name?:
   const pin = normPin(input.pin);
   const wk = parseWeekInput(input);
   await env.DB
-    .prepare(`INSERT INTO categories (id, name, description, color, join_policy, track, is_public, pin_hash, pin_updated_at, week_start, week_count, week_due_dow, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-    .bind(id, name, str(input.description, 1000), str(input.color, 20), policy, track, isPublic, pin ? await pinHash(id, pin) : null, pin ? at : null, wk.week_start ?? null, wk.week_count ?? 15, wk.week_due_dow ?? 6, at)
+    .prepare(`INSERT INTO categories (id, name, description, color, join_policy, track, is_public, pin_hash, pin_updated_at, week_start, week_count, week_due_dow, milestone_due, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+    .bind(id, name, str(input.description, 1000), str(input.color, 20), policy, track, isPublic, pin ? await pinHash(id, pin) : null, pin ? at : null, wk.week_start ?? null, wk.week_count ?? 15, wk.week_due_dow ?? 6, wk.milestone_due ?? null, at)
     .run();
   await logActivity(env, { actor_id: ctx.user.id, category_id: id, action: "category.create", target_id: id, summary: name, source: ctx.source });
   return loadCategory(env, id);
@@ -142,6 +160,11 @@ export async function updateCategory(env: Env, ctx: AuthContext, id: string, inp
   if (wk.week_due_dow !== undefined && wk.week_due_dow !== c.week_due_dow) {
     sets.push("week_due_dow = ?");
     params.push(wk.week_due_dow);
+  }
+  if (wk.milestone_due !== undefined && wk.milestone_due !== (c.milestone_due ?? null)) {
+    sets.push("milestone_due = ?");
+    params.push(wk.milestone_due);
+    notes.push(wk.milestone_due ? "보고서 마감 변경" : "보고서 마감 기본값");
   }
   if (input.name !== undefined) {
     const n = str(input.name, 100);

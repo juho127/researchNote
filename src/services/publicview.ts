@@ -9,7 +9,7 @@ import type { Env } from "../env";
 import { trackOf } from "../env";
 import { bad, HttpError, str, strLimited, unauthorized } from "../lib/http";
 import { newId, randomString, sha256Hex, tokenHint } from "../lib/id";
-import { nowIso } from "../lib/time";
+import { nowIso, tzOffset } from "../lib/time";
 import { logActivity } from "../lib/db";
 
 export const VIEWER_TTL_MS = 24 * 60 * 60 * 1000; // 열람 세션 기본 24시간
@@ -29,16 +29,6 @@ export function viewerUntil(env: Env, now = Date.now()): string | null {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) return null;
   const end = new Date(`${v}T23:59:59${tzOffset(env.APP_TZ)}`).getTime();
   return Number.isFinite(end) && end > now ? v : null;
-}
-function tzOffset(tz: string | undefined): string {
-  try {
-    const parts = new Intl.DateTimeFormat("en-US", { timeZone: tz || "UTC", timeZoneName: "longOffset" }).formatToParts(new Date());
-    const off = parts.find((p) => p.type === "timeZoneName")?.value || "GMT";
-    const m = /GMT([+-]\d{1,2})(?::(\d{2}))?/.exec(off);
-    if (!m) return "Z";
-    const h = String(Math.abs(parseInt(m[1], 10))).padStart(2, "0");
-    return `${m[1].startsWith("-") ? "-" : "+"}${h}:${m[2] || "00"}`;
-  } catch { return "Z"; }
 }
 const MAX_FAILS = 5;
 const LOCK_MS = 10 * 60 * 1000;

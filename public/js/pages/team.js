@@ -13,7 +13,8 @@ export async function render(container, categoryId, query) {
   const viewSeg = h("div.seg");
   const jrCount = (detail.join_requests || []).length;
   const weeklyTab = cat.week_start || cat.track === "capstone" ? [["weekly", "주차별"]] : [];
-  for (const [k, l] of [["board", "보드"], ["list", "목록"], ...weeklyTab, ["notices", `공지${notices.length ? " " + notices.length : ""}`], ["members", `구성원${jrCount ? " · 가입 요청 " + jrCount : ""}`], ["review", `검토 대기${detail.review_queue.length ? " " + detail.review_queue.length : ""}`], ["feed", "활동"]]) {
+  const reportsTab = cat.track === "capstone" ? [["reports", "보고서"]] : [];
+  for (const [k, l] of [["board", "보드"], ["list", "목록"], ...weeklyTab, ...reportsTab, ["notices", `공지${notices.length ? " " + notices.length : ""}`], ["members", `구성원${jrCount ? " · 가입 요청 " + jrCount : ""}`], ["review", `검토 대기${detail.review_queue.length ? " " + detail.review_queue.length : ""}`], ["feed", "활동"]]) {
     viewSeg.append(h("button", { class: view === k ? "active" : "", onclick: () => (location.hash = `#/team/${categoryId}?view=${k}`) }, l));
   }
 
@@ -36,10 +37,46 @@ export async function render(container, categoryId, query) {
   else if (view === "members") body = renderMembers(detail, categoryId, container, query);
   else if (view === "review") body = renderReview(detail.review_queue);
   else if (view === "weekly") body = await renderWeekly(categoryId);
+  else if (view === "reports") body = await renderReportStatus(categoryId, container, query);
   else if (view === "notices") body = await teamNoticeView(detail, categoryId);
   else body = h("div.card", feedList(detail.activity));
 
   mount(container, header, view === "notices" ? null : pinnedStrip(notices, categoryId), body);
+}
+
+// ---------- 보고서 제출·평가 현황 (캡스톤) ----------
+async function renderReportStatus(categoryId, container, query) {
+  const d = await get(`/api/categories/${categoryId}/submissions`);
+  if (!d.enabled) return h("div.empty", "이 트랙에는 보고서 제출 마일스톤이 없습니다.");
+  const refresh = () => render(container, categoryId, { ...query, view: "reports" });
+  const head = h("div.row", { style: { flexWrap: "wrap", gap: "10px", marginBottom: "14px" } }, d.milestones.map((m) => {
+    const pb = d.publish[m.id];
+    return h("div.rep-ms",
+      h("div.row", { style: { gap: "8px" } }, h("b", m.label), m.passed ? pill("마감 지남", "mute sm") : null),
+      h("div.tiny.muted", m.due ? `마감 ${shortDate(m.due)} 24:00${m.overridden ? " · 변경됨" : " · 주차 기본"}` : "마감 없음"),
+      d.is_lead ? h("div.row", { style: { gap: "6px", marginTop: "6px", flexWrap: "wrap" } },
+          pill(pb.published ? `공개됨 ${pb.total}건` : pb.total ? `비공개 ${pb.visible}/${pb.total}` : "평가 없음", pb.published ? "ok sm" : "mute sm"),
+          pb.total ? h("button.btn.xs" + (pb.published ? "" : ".primary"), { onclick: async () => { try { await post(`/api/categories/${categoryId}/evaluations/publish`, { milestone: m.id, visible: !pb.published }); toast(pb.published ? "비공개로 돌렸습니다" : "팀에게 공개했습니다"); refresh(); } catch (e) { errToast(e); } } }, pb.published ? "비공개로" : "일괄 공개") : null,
+          h("button.btn.xs", { onclick: () => downloadFile(`/api/categories/${categoryId}/evaluations/summary?milestone=${m.id}&format=csv`, `${m.id}_scores.csv`) }, "점수표 CSV"))
+        : null);
+  }));
+  const thead = h("thead", h("tr", h("th", "프로젝트"), ...d.milestones.map((m) => h("th", m.label))));
+  const tbody = h("tbody", d.projects.map((p) => h("tr",
+    h("td", h("a", { href: `#/project/${p.id}?tab=reports` }, p.title), h("div.tiny.muted", p.owner_name)),
+    ...d.milestones.map((m) => {
+      const c = p.cells[m.id];
+      const sub = c.submission
+        ? h("div.row", { style: { gap: "6px", flexWrap: "wrap" } }, h("a", { href: `#/project/${p.id}?tab=reports` }, `v${c.submission.version}`), h("span.tiny.muted", shortDate(c.submission.created_at.slice(0, 10))), c.submission.late ? pill("지각", "warn sm") : pill("제출", "ok sm"))
+        : h("span.tiny.muted", m.passed ? "미제출" : "—");
+      const ev = d.is_lead
+        ? h("div.tiny.muted", { style: { marginTop: "3px" } }, c.eval_count ? `평가 ${c.visible_count}/${c.eval_count}${c.avg_total !== null ? ` · 평균 ${c.avg_total}/${d.max_total}` : ""}` : "평가 없음")
+        : d.can_evaluate
+          ? h("div", { style: { marginTop: "3px" } }, c.my_evaluated ? pill("내 평가 완료", "ok sm") : c.submission ? pill("미평가", "warn sm") : null)
+          : h("div.tiny.muted", { style: { marginTop: "3px" } }, c.visible_count ? `평가 공개 ${c.visible_count}건${c.avg_total !== null ? ` · 평균 ${c.avg_total}/${d.max_total}` : ""}` : c.eval_count ? "평가 진행 중" : "");
+      return h("td", sub, ev);
+    }))));
+  return h("div", head, h("div.table-wrap", h("table.table.rep-grid", thead, tbody)),
+    h("p.tiny.muted", { style: { marginTop: "8px" } }, d.is_lead ? "평가는 평가자별 초안으로 쌓이고, [일괄 공개] 를 누르면 해당 마일스톤의 모든 팀 평가가 학생에게 익명(평가자 N)으로 공개됩니다. 점수표 CSV 는 평가자 실명 포함." : d.can_evaluate ? "프로젝트 → [보고서] 탭에서 PDF 를 보고 채점합니다. 다른 평가자의 점수는 보이지 않습니다." : "프로젝트 → [보고서] 탭에서 PDF 를 제출합니다. 마감 후 제출은 지각으로 표시됩니다."));
 }
 
 // ---------- 주차별 제출 현황 ----------

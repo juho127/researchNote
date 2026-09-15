@@ -22,6 +22,13 @@
       "migrations_dir": "migrations"
     }
   ],
+  // 보고서 제출 PDF 저장소: R2 우선 (업로드 제한 20 MB). KV 는 R2 바인딩이 없을 때의 폴백
+  "r2_buckets": [
+    { "binding": "FILES_R2", "bucket_name": "research-note-files" }
+  ],
+  "kv_namespaces": [
+    { "binding": "FILES", "id": "423bd310ac5149319849f79defbbb601" }
+  ],
   "vars": {
     // 화면 상단 기관/연구실 표기 (필요시 수정)
     "APP_NAME": "연구노트",

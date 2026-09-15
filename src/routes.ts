@@ -7,6 +7,7 @@ import * as T from "./services/tasks";
 import * as A from "./services/admin";
 import * as F from "./services/feed";
 import * as W from "./services/weekly";
+import * as SB from "./services/submissions";
 import * as R from "./services/report";
 import * as S from "./services/signup";
 import * as TM from "./services/teams";
@@ -79,6 +80,24 @@ add("GET", "/api/categories", async (_r, env, ctx) => {
 add("GET", "/api/categories/:id", async (_r, env, ctx, p) => json(await F.categoryDetail(env, ctx, p.id)));
 add("GET", "/api/categories/:id/board", async (_r, env, ctx, p) => json(await P.categoryBoard(env, ctx, p.id)));
 add("GET", "/api/categories/:id/weekly", async (_r, env, ctx, p) => json(await W.weeklyStatus(env, ctx, p.id)));
+// 보고서 제출·평가 (캡스톤): 팀 현황, 일괄 공개, 점수표(CSV)
+add("GET", "/api/categories/:id/submissions", async (_r, env, ctx, p) => json(await SB.categoryStatus(env, ctx, p.id)));
+add("POST", "/api/categories/:id/evaluations/publish", async (req, env, ctx, p) => {
+  const b = await readJson<{ milestone?: unknown; visible?: unknown }>(req);
+  return json(await SB.publishEvaluations(env, ctx, p.id, b.milestone, b.visible));
+});
+add("GET", "/api/categories/:id/evaluations/summary", async (_r, env, ctx, p, url) => {
+  const s = await SB.evaluationSummary(env, ctx, p.id, q(url, "milestone"));
+  if (q(url, "format") === "csv") return new Response(SB.summaryCsv(s), { headers: { "Content-Type": "text/csv; charset=utf-8", "Content-Disposition": `attachment; filename*=UTF-8''${encodeURIComponent(s.filename)}` } });
+  return json(s);
+});
+add("GET", "/api/projects/:id/submissions", async (_r, env, ctx, p) => json(await SB.listForProject(env, ctx, p.id)));
+add("POST", "/api/projects/:id/submissions", async (req, env, ctx, p) => json(await SB.upload(env, ctx, req, p.id), 201));
+add("GET", "/api/submissions/:id/file", async (_r, env, ctx, p, url) => SB.fileResponse(env, ctx, p.id, q(url, "download") === "1"));
+add("DELETE", "/api/submissions/:id", async (_r, env, ctx, p) => {
+  await SB.remove(env, ctx, p.id);
+  return json({ ok: true });
+});
 add("GET", "/api/categories/:id/report", async (_r, env, ctx, p, url) =>
   reportResponse(await R.categoryReport(env, ctx, p.id, q(url, "format") || "html", { from: q(url, "from"), to: q(url, "to") }), q(url, "download") === "1")
 );

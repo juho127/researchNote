@@ -68,6 +68,7 @@ description: 연구노트(Research Note) 플랫폼에 논문 진행 상황을 �
 - 팀 찾기·가입: `list_teams`(전체 팀·가입 정책·내 상태) → 사용자가 원하면 `join_team(category_id=<list_teams 결과의 id>, message?)`(즉시 가입 또는 리드 승인 요청). 팀 = 카테고리이며 인자 이름은 `category_id` 다(`team_id` 아님). 한 사람이 여러 팀에 속할 수 있다.
 - 공지: `list_notices`(전체 공지 + 소속 팀 공지). **세션 시작 시 한 번 읽는다.** 발표 형식(시간·장수)·제출 요령·기록 요구사항이 있으면 발표 자료·기록·보고서를 만들 때 그대로 따른다. 사용자가 관리자·리드이고 명시적으로 원할 때만 `post_notice`.
 - 주차 현황: `weekly_status`(팀 × 주차 격자, 이번 주 미제출 프로젝트)
+- 보고서 제출·평가(캡스톤): 학생은 웹에서 PDF 제출(1차 4주차·중간 8주차·최종 12주차, 마감은 그 주 마감 요일 자정, 카테고리 설정으로 변경 가능). 현황은 `list_submissions`(project_id 또는 category_id). 평가자는 `add_evaluation(project_id, submission_id, scores, feedback)` — 제출물 평가는 블라인드(다른 평가자·학생에게 비공개 초안)이며 리드가 `publish_evaluations(category_id, milestone)` 로 일괄 공개하고 `evaluation_summary` 로 점수표를 본다. 학생에게 평가자 이름은 '평가자 N' 으로 익명 표시된다.
 - 팀 상황: `team_overview`(구성원·프로젝트·검토 대기), `team_feed`(최근 활동)
 - 특정 기록 읽기: `list_entries` → `get_entry` (코멘트 포함)
 - 팀원 기록에 의견: `add_comment`. 리드/관리자만 `kind: approve | request_changes`
