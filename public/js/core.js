@@ -315,6 +315,19 @@ export async function downloadFile(path, filename) {
     document.body.append(a); a.click(); a.remove();
   } catch (e) { errToast(e); }
 }
+/** 인증이 필요한 파일(PDF)을 별도 창으로 연다. 팝업 차단을 피하려고 클릭 즉시 빈 창을 먼저 연다. */
+export async function openFileTab(path) {
+  const W = Math.min(1100, screen.availWidth - 40), H = screen.availHeight - 60;
+  const feat = `popup,width=${W},height=${H},left=${Math.max(0, (screen.availWidth - W) / 2)},top=20`;
+  const w = window.open("", "_blank", feat);
+  if (w) w.document.write('<title>불러오는 중…</title><p style="font:14px sans-serif;padding:20px">PDF 불러오는 중…</p>');
+  try {
+    const r = await api("GET", path, undefined, { raw: true });
+    if (!r.ok) { let m = `파일 열기 실패 (${r.status})`; try { const j = await r.json(); if (j.message) m = j.message; } catch {} throw new Error(m); }
+    const url = URL.createObjectURL(await r.blob());
+    if (w) w.location = url; else window.open(url, "_blank", feat);
+  } catch (e) { if (w) w.close(); errToast(e); }
+}
 export async function copyText(text) {
   try { await navigator.clipboard.writeText(text); toast("복사했습니다"); } catch { toast("복사 실패 — 직접 선택해 복사하세요", true); }
 }

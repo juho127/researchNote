@@ -1,4 +1,4 @@
-import { state, get, post, patch, put, del, h, mount, pill, avatar, stages, stageLabel, track, fmtRel, fmtDT, daysSince, input, textarea, field, select, modal, confirmDialog, toast, errToast, copyText, ACTION_LABEL, downloadFile, getToken } from "../core.js";
+import { state, get, post, patch, put, del, h, mount, pill, avatar, stages, stageLabel, track, fmtRel, fmtDT, daysSince, input, textarea, field, select, modal, confirmDialog, toast, errToast, copyText, ACTION_LABEL, downloadFile, openFileTab, getToken } from "../core.js";
 import { shortDate } from "../week.js";
 import { ApiError } from "../core.js";
 import { feedList } from "./home.js";
@@ -424,6 +424,7 @@ async function reports(body, query) {
             h("div.tiny", { style: { wordBreak: "break-all" } }, latest.filename),
             h("div.tiny.muted", `올린 사람 ${latest.submitted_by_name}${latest.note ? " · " + latest.note : ""}`),
             h("div.row", { style: { gap: "4px", marginTop: "4px", flexWrap: "wrap" } },
+              h("button.btn.xs.primary", { onclick: () => openFileTab(`/api/submissions/${latest.id}/file`) }, "보기"),
               h("button.btn.xs", { onclick: () => dl(latest) }, "내려받기"),
               h("button.btn.xs", { onclick: () => uploadDialog(p, m, latest) }, "재제출"),
               h("button.btn.xs.danger", { onclick: () => removeSub(latest) }, "삭제")),

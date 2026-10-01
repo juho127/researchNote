@@ -1,5 +1,5 @@
 import { DOW, weekOf, weekRange, shortDate } from "../week.js";
-import { state, getToken, api, get, post, patch, put, del, h, mount, clear, pill, avatar, stages, stageLabel, stageHint, stageMilestone, stageIndex, stageSelect, track as trackDef, ROLE_LABEL, fmtRel, fmtDT, weekday, today, daysAgo, input, textarea, field, select, modal, confirmDialog, toast, errToast, mdEl, openReport, downloadFile, projectProgress, STATUS_LABEL, STAGE_STATUS_LABEL, REVIEW_LABEL, REVIEW_CLASS } from "../core.js";
+import { state, getToken, api, get, post, patch, put, del, h, mount, clear, pill, avatar, stages, stageLabel, stageHint, stageMilestone, stageIndex, stageSelect, track as trackDef, ROLE_LABEL, fmtRel, fmtDT, weekday, today, daysAgo, input, textarea, field, select, modal, confirmDialog, toast, errToast, mdEl, openReport, downloadFile, openFileTab, projectProgress, STATUS_LABEL, STAGE_STATUS_LABEL, REVIEW_LABEL, REVIEW_CLASS } from "../core.js";
 
 let current = null; // { project, tab, filters }
 
@@ -511,11 +511,6 @@ async function uploadForm(path, fd) {
   if (!r.ok) throw new Error(data.message || `HTTP ${r.status}`);
   return data;
 }
-async function fileBlobUrl(id) {
-  const r = await api("GET", `/api/submissions/${id}/file`, undefined, { raw: true });
-  if (!r.ok) { let m = `파일 열기 실패 (${r.status})`; try { const j = await r.json(); if (j.message) m = j.message; } catch {} throw new Error(m); }
-  return URL.createObjectURL(await r.blob());
-}
 function dday(due, today) {
   const n = (d) => Date.UTC(+d.slice(0, 4), +d.slice(5, 7) - 1, +d.slice(8, 10));
   const d = Math.round((n(due) - n(today)) / 86400000);
@@ -539,14 +534,12 @@ async function renderReports(body, container) {
     const status = latest ? pill(`제출 v${latest.version}${latest.late ? " · 지각" : ""}`, latest.late ? "warn" : "ok") : m.passed ? pill("미제출 · 마감 지남", "bad") : pill("미제출", "mute");
 
     // 제출 파일
-    const viewer = h("div", { style: { display: "none", marginTop: "10px" } });
-    const openInline = async () => { try { const url = await fileBlobUrl(latest.id); mount(viewer, h("iframe.pdf-frame", { src: url, title: latest.filename })); viewer.style.display = ""; } catch (e) { errToast(e); } };
-    const openTab = async () => { const w = window.open("", "_blank"); try { const url = await fileBlobUrl(latest.id); if (w) w.location = url; else window.open(url, "_blank"); } catch (e) { if (w) w.close(); errToast(e); } };
+    const openTab = () => openFileTab(`/api/submissions/${latest.id}/file`);
     const fileRow = latest
       ? h("div.row", { style: { gap: "8px", flexWrap: "wrap" } },
           h("b", latest.filename), h("span.small.muted", `${(latest.size / 1024 / 1024).toFixed(1)} MB · ${latest.submitted_by_name} · ${fmtDT(latest.created_at)}`), latest.note ? h("span.small", `— ${latest.note}`) : null,
           h("span.spacer"),
-          me.viewer ? h("span.tiny.muted", "열람 모드에서는 파일을 열 수 없습니다") : [h("button.btn.xs", { onclick: openInline }, "미리보기"), h("button.btn.xs", { onclick: openTab }, "새 탭"), h("button.btn.xs", { onclick: () => downloadFile(`/api/submissions/${latest.id}/file?download=1`, latest.filename) }, "내려받기")],
+          me.viewer ? h("span.tiny.muted", "열람 모드에서는 파일을 열 수 없습니다") : [h("button.btn.xs.primary", { onclick: openTab }, "미리보기 (새 창)"), h("button.btn.xs", { onclick: () => downloadFile(`/api/submissions/${latest.id}/file?download=1`, latest.filename) }, "내려받기")],
           d.can_submit && (d.is_lead || latest.submitted_by === me.user.id) ? h("button.btn.xs.danger", { onclick: async () => { if (await confirmDialog(`v${latest.version} 제출물을 삭제할까요?`, { danger: true, okLabel: "삭제" })) { try { await del(`/api/submissions/${latest.id}`); toast("삭제했습니다"); reload(container); } catch (e) { errToast(e); } } } }, "삭제") : null)
       : h("div.small.muted", "아직 제출된 파일이 없습니다");
     const history = subs.length > 1
@@ -601,7 +594,7 @@ async function renderReports(body, container) {
 
     return h("div.card", { style: { marginBottom: "14px" } },
       h("div.row", { style: { flexWrap: "wrap", gap: "8px" } }, h("h3", { style: { margin: 0 } }, m.label), status, h("span.small.muted", m.due ? `마감 ${shortDate(m.due)} 24:00 · ${dday(m.due, d.today)}${m.overridden ? " (변경됨)" : ""}` : "마감 없음"), m.hint ? h("span.tiny.muted", `· ${m.hint}`) : null),
-      h("div", { style: { marginTop: "10px" } }, fileRow, history, viewer, form),
+      h("div", { style: { marginTop: "10px" } }, fileRow, history, form),
       h("div", { style: { marginTop: "14px", paddingTop: "10px", borderTop: "1px solid var(--rule)" } }, evalBox),
     );
   });
