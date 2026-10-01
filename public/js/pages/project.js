@@ -450,7 +450,7 @@ async function renderEvaluations(body, container) {
 
 function evaluationCard(ev, p, rubric, max, container) {
   const scored = rubric.filter((x) => ev.scores?.[x.id] !== undefined);
-  const scoreRow = scored.length ? h("div.row", { style: { gap: "6px", flexWrap: "wrap", margin: "6px 0" } }, scored.map((x) => h("span.tag", `${x.label} ${ev.scores[x.id]}/${x.max}`)), ev.total !== null ? pill(`합계 ${ev.total}/${max}`, "ok") : null) : null;
+  const scoreRow = scored.length ? h("div.row", { style: { gap: "6px", flexWrap: "wrap", margin: "6px 0" } }, scored.map((x) => { const c = x.choices?.find((c) => c.score === ev.scores[x.id]); return h("span.tag", { title: x.hint || "" }, `${x.label} ${ev.scores[x.id]}/${x.max}${c ? ` (${c.label})` : ""}`); }), ev.total !== null ? pill(`합계 ${ev.total}/${max}`, "ok") : null) : null;
   const respBox = h("div.comments", { style: { marginTop: "10px" } });
   const drawResp = () => {
     const ta = textarea({ value: ev.response || "", rows: 4, placeholder: "평가 의견에 대한 팀의 답변 · 반영 계획 · 반박 (마크다운). 다음 보고서에 '평가의견 답변'으로 첨부됩니다." });
@@ -474,22 +474,36 @@ function evaluationEditor(p, ev, rubric, container, opts = {}) {
   const fixed = !!(opts.submission || (ev && ev.milestone));
   const stage = select(stages(p.track).map((s) => ({ value: s.id, label: s.milestone ? `${s.label} (${s.milestone})` : s.label })), { value: ev?.stage || p.stage });
   const title = input({ value: ev?.title || (opts.submission ? `${opts.submission.label} 평가` : ""), placeholder: `예: ${stageMilestone(p.stage) || stageLabel(p.stage) + " 평가"}`, maxlength: 200 });
-  const inputs = rubric.map((x) => ({ x, el: input({ type: "number", min: 0, max: x.max, step: 0.5, value: ev?.scores?.[x.id] ?? "", placeholder: `0~${x.max}`, style: { width: "110px" } }) }));
+  const required = !!(opts.required || (ev && ev.milestone && rubric.some((x) => x.choices)));
+  // 선택형 문항(우수 10·중간 7·미흡 4 등)은 라디오, 나머지는 숫자 입력. el.value 로 같은 방식으로 읽는다.
+  const uid = `ev${Date.now().toString(36)}`;
+  const inputs = rubric.map((x, i) => {
+    if (!x.choices) return { x, el: input({ type: "number", min: 0, max: x.max, step: 0.5, value: ev?.scores?.[x.id] ?? "", placeholder: `0~${x.max}`, style: { width: "110px" } }) };
+    const cur = ev?.scores?.[x.id];
+    const radios = x.choices.map((c) => h("input", { type: "radio", name: `${uid}_${i}`, value: String(c.score), checked: cur === c.score }));
+    const el = h("div.row", { style: { gap: "12px", flexWrap: "wrap" } }, x.choices.map((c, j) => h("label.check", { style: { margin: 0 } }, radios[j], `${c.label} (${c.score})`)));
+    Object.defineProperty(el, "value", { get: () => radios.find((r) => r.checked)?.value ?? "" });
+    return { x, el };
+  });
   const totalEl = h("span.pill.ok", "");
-  const recalc = () => { const vals = inputs.map((i) => i.el.value).filter((v) => v !== ""); totalEl.textContent = vals.length ? `합계 ${Math.round(vals.reduce((a, v) => a + Number(v), 0) * 10) / 10} / ${rubric.reduce((a, x) => a + x.max, 0)}` : "점수 없음"; };
-  inputs.forEach((i) => i.el.addEventListener("input", recalc)); recalc();
+  const recalc = () => { const vals = inputs.map((i) => i.el.value).filter((v) => v !== ""); totalEl.textContent = vals.length ? `합계 ${Math.round(vals.reduce((a, v) => a + Number(v), 0) * 10) / 10} / ${rubric.reduce((a, x) => a + x.max, 0)}${required ? ` · ${vals.length}/${inputs.length}문항` : ""}` : "점수 없음"; };
+  inputs.forEach((i) => { i.el.addEventListener("input", recalc); i.el.addEventListener("change", recalc); }); recalc();
   const feedback = textarea({ value: ev?.feedback || "", rows: 10, placeholder: "## 잘한 점\n- \n\n## 개선할 점\n- \n\n## 다음 마일스톤까지 권고\n- " });
   const visible = h("input", { type: "checkbox", checked: ev ? ev.visible : true });
   modal({
     title: ev ? "평가 수정" : "평가 작성", wide: true,
     body: h("div.stack",
       fixed ? h("div.form-grid", field("대상", h("div.small", { style: { paddingTop: "8px", fontWeight: 600 } }, opts.submission?.label || `${ev?.milestone || ""} 제출물`)), field("제목", title)) : h("div.form-grid", field("대상 단계(마일스톤)", stage), field("제목", title)),
-      h("div.field", h("span", "루브릭 점수 (비워도 됨)"), h("div.grid.c2", inputs.map((i) => h("div.row", i.el, h("div", h("div.small", { style: { fontWeight: 600 } }, `${i.x.label} (${i.x.max})`), i.x.hint ? h("div.tiny.muted", i.x.hint) : null)))), h("div", { style: { marginTop: "6px" } }, totalEl)),
+      required
+        ? h("div.field", h("span", "평가 기준 (모든 문항 필수)"), h("div.stack", inputs.map((i, n) => h("div", { style: { padding: "8px 10px", border: "1px solid var(--rule)", borderRadius: "9px" } }, h("div.small", { style: { fontWeight: 600 } }, `${n + 1}. ${i.x.hint || i.x.label}`), h("div", { style: { marginTop: "6px" } }, i.el)))), h("div", { style: { marginTop: "6px" } }, totalEl))
+        : h("div.field", h("span", "루브릭 점수 (비워도 됨)"), h("div.grid.c2", inputs.map((i) => h("div.row", i.el, h("div", h("div.small", { style: { fontWeight: 600 } }, `${i.x.label} (${i.x.max})`), i.x.hint ? h("div.tiny.muted", i.x.hint) : null)))), h("div", { style: { marginTop: "6px" } }, totalEl)),
       field("피드백 (마크다운)", feedback),
       fixed ? h("p.help", "제출물 평가는 초안으로 저장되고 리드가 마일스톤 단위로 팀에 일괄 공개합니다. 다른 평가자에게는 보이지 않고, 학생에게는 '평가자 N' 으로 익명 표시됩니다.") : h("label.check", visible, "팀에게 공개 (끄면 초안: 평가자·리드·관리자만 봄)"),
     ),
     actions: [{ label: "취소" }, { label: ev ? "저장" : "평가 저장", cls: "primary", onClick: async () => {
       const scores = {}; for (const i of inputs) if (i.el.value !== "") scores[i.x.id] = Number(i.el.value);
+      const missing = inputs.filter((i) => i.el.value === "");
+      if (required && missing.length) { toast(`모든 문항을 채점해야 합니다: ${missing.map((i) => i.x.label).join(", ")}`, true); return false; }
       const body = { title: title.value.trim(), scores, feedback: feedback.value };
       if (!fixed) { body.stage = stage.value; body.visible = visible.checked; }
       if (opts.submission) body.submission_id = opts.submission.id;
@@ -531,6 +545,8 @@ async function renderReports(body, container) {
     const latest = subs[0] || null;
     const sm = d.summary[m.id] || {};
     const evs = d.evaluations.filter((e) => e.milestone === m.id);
+    const rubric = m.rubric || d.rubric || [];
+    const max = m.max_total ?? d.max_total;
     const status = latest ? pill(`제출 v${latest.version}${latest.late ? " · 지각" : ""}`, latest.late ? "warn" : "ok") : m.passed ? pill("미제출 · 마감 지남", "bad") : pill("미제출", "mute");
 
     // 제출 파일
@@ -568,7 +584,7 @@ async function renderReports(body, container) {
 
     // 평가
     let evalBox;
-    const editorOpts = latest ? { submission: { id: latest.id, label: `${m.label} (v${latest.version})` }, tab: "reports" } : null;
+    const editorOpts = latest ? { submission: { id: latest.id, label: `${m.label} (v${latest.version})` }, tab: "reports", required: !!m.rubric } : null;
     const publishBtn = d.is_lead && sm.count
       ? h("button.btn.xs" + (sm.published ? "" : ".primary"), { onclick: async () => { try { await post(`/api/categories/${p.category_id}/evaluations/publish`, { milestone: m.id, visible: !sm.published }); toast(sm.published ? "비공개로 돌렸습니다" : "카테고리 전체 팀에게 공개했습니다"); reload(container); } catch (e) { errToast(e); } } }, sm.published ? "비공개로" : `${m.label} 평가 일괄 공개`)
       : null;
@@ -598,7 +614,7 @@ async function renderReports(body, container) {
       h("div", { style: { marginTop: "14px", paddingTop: "10px", borderTop: "1px solid var(--rule)" } }, evalBox),
     );
   });
-  mount(body, h("p.small.muted", { style: { marginBottom: "12px" } }, `마일스톤별 PDF 보고서를 제출하고 평가를 받습니다. 루브릭: ${rubric.map((x) => `${x.label} ${x.max}`).join(" · ")} (만점 ${max}). 평가는 블라인드로 진행되고 리드가 마일스톤 단위로 일괄 공개합니다.`), ...cards);
+  mount(body, h("p.small.muted", { style: { marginBottom: "12px" } }, "마일스톤별 PDF 보고서를 제출하고 평가를 받습니다. 평가는 블라인드로 진행되고 리드가 마일스톤 단위로 일괄 공개합니다.", ...d.milestones.map((m) => h("div.tiny", `${m.label} 평가 기준: ${(m.rubric || rubric).map((x) => x.choices ? `${x.label} ${x.choices.map((c) => c.score).join("/")}` : `${x.label} ${x.max}`).join(" · ")} (만점 ${m.max_total ?? max}${m.rubric ? ", 모든 문항 필수" : ""})`))), ...cards);
 }
 
 // ---------- 프로젝트 수정 / 보고서 ----------

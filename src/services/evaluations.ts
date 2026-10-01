@@ -1,5 +1,5 @@
 import type { AuthContext, Env } from "../env";
-import { trackOf, isStageOf, stageIds, reportsOf, STAGE_LABELS } from "../env";
+import { trackOf, isStageOf, stageIds, reportsOf, rubricOf, rubricRequired, rubricMax, STAGE_LABELS } from "../env";
 import { bad, forbidden, notFound, strLimited, str, bool } from "../lib/http";
 import { newId } from "../lib/id";
 import { nowIso } from "../lib/time";
@@ -41,8 +41,8 @@ type RawRow = RawEvaluationRow;
 export const EVAL_SELECT = `SELECT e.*, u.name AS evaluator_name, r.name AS response_by_name
   FROM evaluations e JOIN users u ON u.id = e.evaluator_id LEFT JOIN users r ON r.id = e.response_by`;
 
-function maxTotal(track: string): number {
-  return trackOf(track).rubric.reduce((a, x) => a + x.max, 0);
+function maxTotal(track: string, milestone?: string | null): number {
+  return rubricMax(rubricOf(track, milestone));
 }
 
 export async function canRespond(env: Env, ctx: AuthContext, p: ProjectRow): Promise<boolean> {
@@ -59,14 +59,14 @@ export function shapeEvaluation(raw: RawRow, p: ProjectRow, ctx: AuthContext, re
     ...raw,
     scores,
     visible: !!raw.visible,
-    max_total: maxTotal(p.track),
+    max_total: maxTotal(p.track, raw.milestone),
     can_edit: ctx.isAdmin || raw.evaluator_id === ctx.user.id,
     can_respond: responder,
   };
 }
 
 /** 프로젝트의 평가 목록 (초안은 평가자·리드·관리자만) */
-export async function listEvaluations(env: Env, ctx: AuthContext, projectId: string): Promise<{ evaluations: EvaluationRow[]; rubric: ReturnType<typeof trackOf>["rubric"]; summary: Record<string, { count: number; avg_total: number | null }> }> {
+export async function listEvaluations(env: Env, ctx: AuthContext, projectId: string): Promise<{ evaluations: EvaluationRow[]; rubric: ReturnType<typeof trackOf>["rubric"]; rubrics: Record<string, ReturnType<typeof trackOf>["rubric"]>; summary: Record<string, { count: number; avg_total: number | null }> }> {
   const p = await getProjectForRead(env, ctx, projectId);
   const rs = await env.DB.prepare(`${EVAL_SELECT} WHERE e.project_id = ? ORDER BY e.created_at`).bind(projectId).all<RawRow>();
   const responder = await canRespond(env, ctx, p);
@@ -86,7 +86,7 @@ export async function listEvaluations(env: Env, ctx: AuthContext, projectId: str
     const of = rows.filter((r) => r.stage === s && r.visible && r.total !== null);
     summary[s] = { count: rows.filter((r) => r.stage === s && r.visible).length, avg_total: of.length ? Math.round((of.reduce((a, r) => a + (r.total ?? 0), 0) / of.length) * 10) / 10 : null };
   }
-  return { evaluations: rows, rubric: trackOf(p.track).rubric, summary };
+  return { evaluations: rows, rubric: trackOf(p.track).rubric, rubrics: Object.fromEntries(reportsOf(p.track).filter((r) => r.rubric).map((r) => [r.id, r.rubric!])), summary };
 }
 
 /** 학생에게 평가자 이름을 숨긴다 ('평가자 N', 같은 평가자는 같은 번호) */
@@ -109,17 +109,26 @@ export interface EvaluationInput {
   visible?: unknown;
 }
 
-function normScores(track: string, v: unknown): { scores: Record<string, number>; total: number | null } {
-  const rubric = trackOf(track).rubric;
-  if (v === undefined || v === null) return { scores: {}, total: null };
+/** 점수 검증. 마일스톤 전용 기준(캡스톤 보고서)은 모든 문항 필수이고, 선택형 문항은 정해진 점수만 허용 */
+function normScores(track: string, v: unknown, milestone?: string | null): { scores: Record<string, number>; total: number | null } {
+  const rubric = rubricOf(track, milestone);
+  const required = rubricRequired(track, milestone);
+  if (v === undefined || v === null) {
+    if (required) bad(`평가 기준 ${rubric.length}개 문항을 모두 채점해야 합니다 (${rubric.map((a) => a.label).join(", ")})`);
+    return { scores: {}, total: null };
+  }
   if (typeof v !== "object" || Array.isArray(v)) bad("scores 는 {축id: 점수} 객체여야 합니다");
   const out: Record<string, number> = {};
   let any = false;
   for (const ax of rubric) {
     const raw = (v as Record<string, unknown>)[ax.id];
-    if (raw === undefined || raw === null || raw === "") continue;
+    if (raw === undefined || raw === null || raw === "") {
+      if (required) bad(`'${ax.label}' 문항을 채점해야 합니다 (모든 문항 필수)`);
+      continue;
+    }
     const n = Number(raw);
     if (!Number.isFinite(n) || n < 0 || n > ax.max) bad(`${ax.label} 점수는 0~${ax.max} 사이여야 합니다`);
+    if (ax.choices && !ax.choices.some((c) => c.score === n)) bad(`${ax.label} 점수는 ${ax.choices.map((c) => `${c.score}(${c.label})`).join(" · ")} 중 하나여야 합니다`);
     out[ax.id] = Math.round(n * 10) / 10;
     any = true;
   }
@@ -152,7 +161,7 @@ export async function createEvaluation(env: Env, ctx: AuthContext, projectId: st
     if (prev) return updateEvaluation(env, ctx, prev.id, { title: input.title, scores: input.scores, feedback: input.feedback });
   }
   if (!isStageOf(p.track, stage)) bad(`stage 값이 올바르지 않습니다 (${trackOf(p.track).label} 트랙: ${stageIds(p.track).join(", ")})`);
-  const { scores, total } = normScores(p.track, input.scores);
+  const { scores, total } = normScores(p.track, input.scores, milestone);
   const feedback = strLimited(input.feedback, 50_000, "feedback");
   if (!feedback && total === null) bad("점수나 피드백 중 하나는 있어야 합니다");
   const title = strLimited(input.title, 200, "title") || defaultTitle || `${STAGE_LABELS[stage]} 평가`;
@@ -167,7 +176,7 @@ export async function createEvaluation(env: Env, ctx: AuthContext, projectId: st
     .bind(id, projectId, stage, ctx.user.id, title, JSON.stringify(scores), total, feedback, visible ? 1 : 0, submissionId, milestone, at, at)
     .run();
   await touchProject(env, projectId);
-  await logActivity(env, { actor_id: ctx.user.id, category_id: p.category_id, project_id: projectId, action: "evaluation.create", target_id: id, summary: `${title}${total !== null ? ` · ${total}/${maxTotal(p.track)}` : ""}${visible ? "" : " (초안)"}`, source: ctx.source });
+  await logActivity(env, { actor_id: ctx.user.id, category_id: p.category_id, project_id: projectId, action: "evaluation.create", target_id: id, summary: `${title}${total !== null ? ` · ${total}/${maxTotal(p.track, milestone)}` : ""}${visible ? "" : " (초안)"}`, source: ctx.source });
   return (await getEvaluation(env, ctx, id));
 }
 
@@ -203,7 +212,7 @@ export async function updateEvaluation(env: Env, ctx: AuthContext, id: string, i
   }
   if (input.title !== undefined) { sets.push("title = ?"); params.push(strLimited(input.title, 200, "title")); }
   if (input.scores !== undefined) {
-    const { scores, total } = normScores(p.track, input.scores);
+    const { scores, total } = normScores(p.track, input.scores, raw.milestone);
     sets.push("scores = ?", "total = ?"); params.push(JSON.stringify(scores), total);
   }
   if (input.feedback !== undefined) { sets.push("feedback = ?"); params.push(strLimited(input.feedback, 50_000, "feedback")); }

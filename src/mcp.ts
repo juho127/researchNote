@@ -199,10 +199,13 @@ const TOOLS: ToolDef[] = [
     handler: async (env, ctx, a) => {
       const r = await EV.listEvaluations(env, ctx, String(a.project_id));
       const max = r.rubric.reduce((x, y) => x + y.max, 0);
-      const L = [`루브릭: ${r.rubric.map((x) => `${x.id}=${x.label}(0~${x.max})`).join(", ")} · 만점 ${max}`];
+      const fmtAx = (x: { id: string; label: string; max: number; choices?: { score: number; label: string }[] }) => `${x.id}=${x.label}(${x.choices ? x.choices.map((c) => `${c.score}:${c.label}`).join("/") : `0~${x.max}`})`;
+      const L = [`루브릭(단계 평가): ${r.rubric.map(fmtAx).join(", ")} · 만점 ${max}`];
+      for (const [mid, rb] of Object.entries(r.rubrics)) L.push(`보고서 ${mid} 평가 기준(모든 문항 필수): ${rb.map(fmtAx).join(", ")} · 만점 ${rb.reduce((x, y) => x + y.max, 0)}`);
       for (const ev of r.evaluations) {
-        L.push(`### ${ev.title} (${ev.id}) · ${STAGE_LABELS[ev.stage]} · ${ev.evaluator_name} · ${ev.created_at.slice(0, 10)}${ev.total !== null ? ` · ${ev.total}/${max}` : ""}${ev.visible ? "" : " · 초안"}`);
-        if (Object.keys(ev.scores).length) L.push(Object.entries(ev.scores).map(([k, v]) => `${STAGE_LABELS[k] ?? r.rubric.find((x) => x.id === k)?.label ?? k}: ${v}`).join(" · "));
+        const rb = (ev.milestone && r.rubrics[ev.milestone]) || r.rubric;
+        L.push(`### ${ev.title} (${ev.id}) · ${STAGE_LABELS[ev.stage]} · ${ev.evaluator_name} · ${ev.created_at.slice(0, 10)}${ev.total !== null ? ` · ${ev.total}/${ev.max_total}` : ""}${ev.visible ? "" : " · 초안"}`);
+        if (Object.keys(ev.scores).length) L.push(Object.entries(ev.scores).map(([k, v]) => `${rb.find((x) => x.id === k)?.label ?? STAGE_LABELS[k] ?? k}: ${v}`).join(" · "));
         if (ev.feedback) L.push(ev.feedback);
         if (ev.response) L.push(`> 팀 답변 (${ev.response_by_name ?? ""}): ${ev.response}`);
       }
@@ -213,7 +216,7 @@ const TOOLS: ToolDef[] = [
   {
     name: "add_evaluation",
     title: "평가 작성 (리드·평가자·관리자)",
-    description: "마일스톤(단계)에 대한 평가를 남긴다. scores 는 트랙 루브릭 축별 점수 {축id: 점수} (list_evaluations 로 축·만점 확인). 사용자가 평가자일 때만.",
+    description: "마일스톤(단계)에 대한 평가를 남긴다. scores 는 축별 점수 {축id: 점수} (list_evaluations 로 축·만점 확인). 보고서 제출물(submission_id) 평가는 마일스톤 전용 기준을 쓰며 모든 문항이 필수이고 선택형 문항은 정해진 점수(예: 10/7/4)만 허용. 사용자가 평가자일 때만.",
     inputSchema: {
       type: "object",
       properties: {

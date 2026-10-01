@@ -435,7 +435,7 @@ async function reports(body, query) {
                     h("a", { href: "#", style: { color: "var(--bad)" }, onclick: (e) => { e.preventDefault(); removeSub(s); } }, "삭제")))))
               : null)
         : h("div", h("span.tiny.muted", m.passed ? "미제출" : "—"), " ", p.status === "active" ? h("button.btn.xs.primary", { onclick: () => uploadDialog(p, m, null) }, "업로드") : null);
-      const ev = h("div.tiny.muted", { style: { marginTop: "4px" } }, c.eval_count ? `평가 ${c.visible_count}/${c.eval_count}${c.avg_total !== null ? ` · 평균 ${c.avg_total}/${status.max_total}` : ""}` : "평가 없음");
+      const ev = h("div.tiny.muted", { style: { marginTop: "4px" } }, c.eval_count ? `평가 ${c.visible_count}/${c.eval_count}${c.avg_total !== null ? ` · 평균 ${c.avg_total}/${m.max_total ?? status.max_total}` : ""}` : "평가 없음");
       return h("td", fileBox, ev);
     }))));
 

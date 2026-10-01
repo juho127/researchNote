@@ -69,10 +69,10 @@ async function renderReportStatus(categoryId, container, query) {
         ? h("div.row", { style: { gap: "6px", flexWrap: "wrap" } }, h("a", { href: `#/project/${p.id}?tab=reports` }, `v${c.submission.version}`), h("span.tiny.muted", shortDate(c.submission.created_at.slice(0, 10))), c.submission.late ? pill("지각", "warn sm") : pill("제출", "ok sm"), state.me.viewer ? null : h("button.btn.xs", { title: c.submission.filename, onclick: () => openFileTab(`/api/submissions/${c.submission.id}/file`) }, "새 창에서 보기"))
         : h("span.tiny.muted", m.passed ? "미제출" : "—");
       const ev = d.is_lead
-        ? h("div.tiny.muted", { style: { marginTop: "3px" } }, c.eval_count ? `평가 ${c.visible_count}/${c.eval_count}${c.avg_total !== null ? ` · 평균 ${c.avg_total}/${d.max_total}` : ""}` : "평가 없음")
+        ? h("div.tiny.muted", { style: { marginTop: "3px" } }, c.eval_count ? `평가 ${c.visible_count}/${c.eval_count}${c.avg_total !== null ? ` · 평균 ${c.avg_total}/${m.max_total ?? d.max_total}` : ""}` : "평가 없음")
         : d.can_evaluate
           ? h("div", { style: { marginTop: "3px" } }, c.my_evaluated ? pill("내 평가 완료", "ok sm") : c.submission ? pill("미평가", "warn sm") : null)
-          : h("div.tiny.muted", { style: { marginTop: "3px" } }, c.visible_count ? `평가 공개 ${c.visible_count}건${c.avg_total !== null ? ` · 평균 ${c.avg_total}/${d.max_total}` : ""}` : c.eval_count ? "평가 진행 중" : "");
+          : h("div.tiny.muted", { style: { marginTop: "3px" } }, c.visible_count ? `평가 공개 ${c.visible_count}건${c.avg_total !== null ? ` · 평균 ${c.avg_total}/${m.max_total ?? d.max_total}` : ""}` : c.eval_count ? "평가 진행 중" : "");
       return h("td", sub, ev);
     }))));
   return h("div", head, h("div.table-wrap", h("table.table.rep-grid", thead, tbody)),

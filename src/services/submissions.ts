@@ -7,7 +7,7 @@
  * - 파일 열람은 카테고리 구성원(평가자 포함)만. 핀 열람자는 제출 현황만 본다.
  */
 import type { AuthContext, Env } from "../env";
-import { reportsOf, trackOf, type ReportDef } from "../env";
+import { reportsOf, rubricOf, rubricMax, type ReportDef, type RubricAxis } from "../env";
 import { canEvaluate, categoryRole, requireCategoryMember } from "../lib/auth";
 import { bad, forbidden, notFound, str, strLimited } from "../lib/http";
 import { newId } from "../lib/id";
@@ -64,6 +64,8 @@ export interface SubmissionRow {
 type SubmissionRaw = SubmissionRow & { storage_key: string };
 
 export interface MilestoneInfo extends ReportDef {
+  rubric: RubricAxis[];    // 이 마일스톤의 평가 기준 (전용 기준 없으면 트랙 루브릭)
+  max_total: number;
   due: string | null;      // YYYY-MM-DD
   due_at: string | null;   // ISO (그날 자정 APP_TZ)
   overridden: boolean;     // 카테고리 설정으로 덮어쓴 마감인지
@@ -106,7 +108,8 @@ export function milestonesFor(env: Env, cat: CatRow): MilestoneInfo[] {
   return reports.map((r) => {
     const due = over[r.id] || (cfg ? weekRange(cfg, r.week).end : null);
     const due_at = due ? endOfDayIso(due, env.APP_TZ) : null;
-    return { ...r, due, due_at, overridden: !!over[r.id], passed: !!due_at && due_at < now };
+    const rubric = rubricOf(cat.track, r.id);
+    return { ...r, rubric, max_total: rubricMax(rubric), due, due_at, overridden: !!over[r.id], passed: !!due_at && due_at < now };
   });
 }
 
@@ -153,10 +156,11 @@ export async function listForProject(env: Env, ctx: AuthContext, projectId: stri
   const p = await getProjectForRead(env, ctx, projectId);
   const cat = await loadCat(env, p.category_id);
   const milestones = milestonesFor(env, cat);
-  const rubric = trackOf(p.track).rubric;
+  const rubric = rubricOf(p.track);
   const role = categoryRole(ctx, p.category_id);
   const isLead = ctx.isAdmin || role === "admin" || role === "lead";
-  const base = { enabled: milestones.length > 0, milestones, rubric, max_total: rubric.reduce((a, x) => a + x.max, 0), today: todayIn(env.APP_TZ), is_lead: isLead, can_submit: false, can_evaluate: false, is_viewer: !!ctx.viewer };
+  // rubric·max_total 은 트랙 기본값(하위호환). 마일스톤별 기준은 milestones[].rubric·max_total
+  const base = { enabled: milestones.length > 0, milestones, rubric, max_total: rubricMax(rubric), today: todayIn(env.APP_TZ), is_lead: isLead, can_submit: false, can_evaluate: false, is_viewer: !!ctx.viewer };
   if (!milestones.length) return { ...base, submissions: [] as SubmissionRow[], evaluations: [] as EvaluationRow[], summary: {} as Record<string, MilestoneSummary> };
 
   const [subRs, evRs] = await env.DB.batch([
@@ -182,7 +186,7 @@ export async function listForProject(env: Env, ctx: AuthContext, projectId: stri
     const scoped = isLead ? of : of.filter((e) => e.visible); // 평가자·학생에게는 공개된 것만 집계 (평가자는 자기 것 외 점수 비공개)
     const withTotal = scoped.filter((e) => e.total !== null);
     const axis_avg: Record<string, number> = {};
-    for (const ax of rubric) {
+    for (const ax of m.rubric) {
       const vals = scoped.map((e) => { try { return JSON.parse(e.scores || "{}")[ax.id]; } catch { return undefined; } }).filter((v) => typeof v === "number") as number[];
       if (vals.length) axis_avg[ax.id] = Math.round((vals.reduce((a, b) => a + b, 0) / vals.length) * 10) / 10;
     }
@@ -280,8 +284,8 @@ export async function categoryStatus(env: Env, ctx: AuthContext, categoryId: str
   const cat = await loadCat(env, categoryId);
   const milestones = milestonesFor(env, cat);
   const isLead = ctx.isAdmin || role === "admin" || role === "lead";
-  const rubric = trackOf(cat.track).rubric;
-  const base = { enabled: milestones.length > 0, milestones, is_lead: isLead, can_evaluate: !ctx.viewer && canEvaluate(ctx, categoryId), max_total: rubric.reduce((a, x) => a + x.max, 0), today: todayIn(env.APP_TZ) };
+  const rubric = rubricOf(cat.track);
+  const base = { enabled: milestones.length > 0, milestones, is_lead: isLead, can_evaluate: !ctx.viewer && canEvaluate(ctx, categoryId), max_total: rubricMax(rubric), today: todayIn(env.APP_TZ) };
   if (!milestones.length) return { ...base, projects: [], publish: {} as Record<string, { total: number; visible: number; published: boolean }> };
   const [prs, subs, evs] = await env.DB.batch([
     env.DB.prepare(`SELECT p.id, p.title, p.owner_id, u.name AS owner_name, p.status FROM projects p JOIN users u ON u.id = p.owner_id WHERE p.category_id = ? AND p.status IN ('active','paused') ORDER BY p.title`).bind(categoryId),
@@ -353,7 +357,7 @@ export async function evaluationSummary(env: Env, ctx: AuthContext, categoryId: 
   const cat = await loadCat(env, categoryId);
   const m = milestonesFor(env, cat).find((x) => x.id === str(milestone, 40));
   if (!m) bad("milestone 값이 올바르지 않습니다 (예: report1)");
-  const rubric = trackOf(cat.track).rubric.map((x) => ({ id: x.id, label: x.label, max: x.max }));
+  const rubric = m!.rubric.map((x) => ({ id: x.id, label: x.label, max: x.max }));
   const [prs, evs, subs] = await env.DB.batch([
     env.DB.prepare(`SELECT id, title FROM projects WHERE category_id = ? AND status IN ('active','paused') ORDER BY title`).bind(categoryId),
     env.DB.prepare(`SELECT e.project_id, p.title AS project_title, e.evaluator_id, u.name AS evaluator_name, e.scores, e.total, e.visible, e.created_at FROM evaluations e JOIN projects p ON p.id = e.project_id JOIN users u ON u.id = e.evaluator_id WHERE p.category_id = ? AND e.milestone = ? ORDER BY p.title, u.name`).bind(categoryId, m.id),

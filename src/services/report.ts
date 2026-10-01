@@ -1,5 +1,5 @@
 import type { AuthContext, Env, Stage } from "../env";
-import { STAGE_LABELS, STAGE_HINTS, stageIds, trackOf } from "../env";
+import { rubricOf, rubricMax, STAGE_LABELS, STAGE_HINTS, stageIds, trackOf } from "../env";
 import { requireCategoryMember } from "../lib/auth";
 import { escapeHtml, renderMarkdown } from "../lib/markdown";
 import { isDateStr, bad } from "../lib/http";
@@ -103,13 +103,13 @@ export function projectReportMarkdown(d: ProjectReportData, tz: string): string 
     L.push("");
   }
   if (d.evaluations.length) {
-    const rubric = trackOf(p.track).rubric;
-    const max = rubric.reduce((a, x) => a + x.max, 0);
     L.push("## 평가·피드백 (평가자 → 팀 답변)");
     L.push("");
     for (const ev of d.evaluations) {
       let sc: Record<string, number> = {};
       try { sc = JSON.parse(ev.scores || "{}"); } catch {}
+      const rubric = rubricOf(p.track, ev.milestone);
+      const max = rubricMax(rubric);
       L.push(`### ${ev.title} — ${STAGE_LABELS[ev.stage] ?? ev.stage} · ${ev.evaluator_name} · ${fmtDateTime(ev.created_at, tz)}${ev.total !== null ? ` · **${ev.total}/${max}**` : ""}`);
       if (Object.keys(sc).length) L.push("", "| 축 | 점수 |", "|---|---|", ...rubric.filter((a) => sc[a.id] !== undefined).map((a) => `| ${a.label} | ${sc[a.id]}/${a.max} |`));
       if (ev.feedback) L.push("", ev.feedback);
@@ -232,12 +232,12 @@ export function projectReportHtml(d: ProjectReportData, env: Env): string {
       <div class="md">${s.summary?.trim() ? renderMarkdown(s.summary) : `<p class="empty">아직 정리되지 않음 · ${STAGE_HINTS[s.stage as Stage]}</p>`}</div></div>`);
   }
   if (d.evaluations.length) {
-    const rubric = trackOf(p.track).rubric;
-    const max = rubric.reduce((a, x) => a + x.max, 0);
     H.push(`<h2>평가·피드백 (평가자 → 팀 답변)</h2>`);
     for (const ev of d.evaluations) {
       let sc: Record<string, number> = {};
       try { sc = JSON.parse(ev.scores || "{}"); } catch {}
+      const rubric = rubricOf(p.track, ev.milestone);
+      const max = rubricMax(rubric);
       H.push(`<div class="stage"><h3>${escapeHtml(ev.title)} <span class="pill">${escapeHtml(STAGE_LABELS[ev.stage] ?? ev.stage)}</span>${ev.total !== null ? `<span class="pill appr">${ev.total}/${max}</span>` : ""}</h3>
         <div class="tiny" style="color:var(--muted)">${escapeHtml(ev.evaluator_name)} · ${fmtDateTime(ev.created_at, tz)}</div>
         ${Object.keys(sc).length ? `<table class="md"><thead><tr>${rubric.filter((a) => sc[a.id] !== undefined).map((a) => `<th>${escapeHtml(a.label)}</th>`).join("")}</tr></thead><tbody><tr>${rubric.filter((a) => sc[a.id] !== undefined).map((a) => `<td>${sc[a.id]}/${a.max}</td>`).join("")}</tr></tbody></table>` : ""}
