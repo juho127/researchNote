@@ -539,7 +539,7 @@ async function renderReports(body, container) {
       ? h("div.row", { style: { gap: "8px", flexWrap: "wrap" } },
           h("b", latest.filename), h("span.small.muted", `${(latest.size / 1024 / 1024).toFixed(1)} MB · ${latest.submitted_by_name} · ${fmtDT(latest.created_at)}`), latest.note ? h("span.small", `— ${latest.note}`) : null,
           h("span.spacer"),
-          me.viewer ? h("span.tiny.muted", "열람 모드에서는 파일을 열 수 없습니다") : [h("button.btn.xs.primary", { onclick: openTab }, "미리보기 (새 창)"), h("button.btn.xs", { onclick: () => downloadFile(`/api/submissions/${latest.id}/file?download=1`, latest.filename) }, "내려받기")],
+          me.viewer ? h("span.tiny.muted", "열람 모드에서는 파일을 열 수 없습니다") : [h("button.btn.xs.primary", { onclick: openTab }, "새 창에서 보기"), h("button.btn.xs", { onclick: () => downloadFile(`/api/submissions/${latest.id}/file?download=1`, latest.filename) }, "내려받기")],
           d.can_submit && (d.is_lead || latest.submitted_by === me.user.id) ? h("button.btn.xs.danger", { onclick: async () => { if (await confirmDialog(`v${latest.version} 제출물을 삭제할까요?`, { danger: true, okLabel: "삭제" })) { try { await del(`/api/submissions/${latest.id}`); toast("삭제했습니다"); reload(container); } catch (e) { errToast(e); } } } }, "삭제") : null)
       : h("div.small.muted", "아직 제출된 파일이 없습니다");
     const history = subs.length > 1

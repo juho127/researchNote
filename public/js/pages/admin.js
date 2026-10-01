@@ -424,7 +424,7 @@ async function reports(body, query) {
             h("div.tiny", { style: { wordBreak: "break-all" } }, latest.filename),
             h("div.tiny.muted", `올린 사람 ${latest.submitted_by_name}${latest.note ? " · " + latest.note : ""}`),
             h("div.row", { style: { gap: "4px", marginTop: "4px", flexWrap: "wrap" } },
-              h("button.btn.xs.primary", { onclick: () => openFileTab(`/api/submissions/${latest.id}/file`) }, "보기"),
+              h("button.btn.xs.primary", { onclick: () => openFileTab(`/api/submissions/${latest.id}/file`) }, "새 창에서 보기"),
               h("button.btn.xs", { onclick: () => dl(latest) }, "내려받기"),
               h("button.btn.xs", { onclick: () => uploadDialog(p, m, latest) }, "재제출"),
               h("button.btn.xs.danger", { onclick: () => removeSub(latest) }, "삭제")),

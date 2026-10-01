@@ -66,7 +66,7 @@ async function renderReportStatus(categoryId, container, query) {
     ...d.milestones.map((m) => {
       const c = p.cells[m.id];
       const sub = c.submission
-        ? h("div.row", { style: { gap: "6px", flexWrap: "wrap" } }, h("a", { href: `#/project/${p.id}?tab=reports` }, `v${c.submission.version}`), h("span.tiny.muted", shortDate(c.submission.created_at.slice(0, 10))), c.submission.late ? pill("지각", "warn sm") : pill("제출", "ok sm"), state.me.viewer ? null : h("button.btn.xs", { title: c.submission.filename, onclick: () => openFileTab(`/api/submissions/${c.submission.id}/file`) }, "보기"))
+        ? h("div.row", { style: { gap: "6px", flexWrap: "wrap" } }, h("a", { href: `#/project/${p.id}?tab=reports` }, `v${c.submission.version}`), h("span.tiny.muted", shortDate(c.submission.created_at.slice(0, 10))), c.submission.late ? pill("지각", "warn sm") : pill("제출", "ok sm"), state.me.viewer ? null : h("button.btn.xs", { title: c.submission.filename, onclick: () => openFileTab(`/api/submissions/${c.submission.id}/file`) }, "새 창에서 보기"))
         : h("span.tiny.muted", m.passed ? "미제출" : "—");
       const ev = d.is_lead
         ? h("div.tiny.muted", { style: { marginTop: "3px" } }, c.eval_count ? `평가 ${c.visible_count}/${c.eval_count}${c.avg_total !== null ? ` · 평균 ${c.avg_total}/${d.max_total}` : ""}` : "평가 없음")
