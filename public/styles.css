@@ -298,3 +298,30 @@ label.check.small{font-size:12.5px;color:var(--muted)}
 .rep-ms{min-width:220px;padding:8px 12px;border:1px solid var(--rule);border-radius:9px;background:#fff}
 .rep-grid td{vertical-align:top}
 input.input[type=file]{padding:6px;max-width:340px}
+/* 평가 페이지 */
+.btn.lg{padding:11px 20px;font-size:15px;border-radius:11px}
+.eval-cat{display:flex;justify-content:space-between;align-items:center;text-decoration:none;color:var(--ink)}
+.eval-criteria{margin-bottom:14px;background:var(--wash)}
+.eval-progress{min-width:220px}
+.eval-progress .bar{height:8px;border-radius:6px;background:var(--rule);overflow:hidden;margin-top:4px}
+.eval-progress .bar i{display:block;height:100%;background:var(--teal)}
+.eval-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:12px}
+.eval-team{display:flex;flex-direction:column;gap:4px}
+.eval-team.done{border-color:#BFE3CE}
+.eval-team-h{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
+.eval-team-t{font-size:15.5px;line-height:1.4}
+.eval-file{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+.eval-q{border-left:4px solid var(--rule)}
+.eval-q.answered{border-left-color:var(--teal)}
+.eval-q.missing{border-left-color:var(--bad);background:var(--badbg)}
+.eval-q-t{display:flex;gap:10px;font-weight:600;margin-bottom:10px}
+.eval-q-n{flex:none;width:26px;height:26px;border-radius:50%;background:var(--navy);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:13px}
+.eval-choices{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px}
+.eval-choice{display:flex;align-items:center;gap:8px;border:1.5px solid var(--rule);border-radius:10px;padding:11px 14px;cursor:pointer;background:#fff;transition:border-color .15s,background .15s}
+.eval-choice:hover{border-color:var(--mint)}
+.eval-choice input{accent-color:var(--teal);width:18px;height:18px;margin:0}
+.eval-choice:has(input:checked){border-color:var(--teal);background:#E6F4F4}
+.eval-choice-l{font-weight:700}
+.eval-choice-s{margin-left:auto;color:var(--muted);font-size:13px}
+.eval-actions{position:sticky;bottom:0;display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:14px;padding:12px 14px;background:rgba(255,255,255,.96);border:1px solid var(--rule);border-radius:12px;box-shadow:var(--shadow)}
+.eval-cta{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin:10px 0 14px;padding:14px 16px;border:1.5px solid var(--teal);border-radius:12px;background:#E6F4F4}

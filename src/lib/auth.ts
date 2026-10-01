@@ -25,13 +25,13 @@ function rejectNonToken(token: string): void {
 async function loadMemberships(db: D1Database, userId: string): Promise<Membership[]> {
   const rs = await db
     .prepare(
-      `SELECT m.category_id, c.name AS category_name, m.role
+      `SELECT m.category_id, c.name AS category_name, m.role, c.track
          FROM memberships m JOIN categories c ON c.id = m.category_id
         WHERE m.user_id = ? AND c.archived_at IS NULL
         ORDER BY c.name`
     )
     .bind(userId)
-    .all<{ category_id: string; category_name: string; role: "lead" | "member" | "evaluator" }>();
+    .all<{ category_id: string; category_name: string; role: "lead" | "member" | "evaluator"; track: string }>();
   return rs.results ?? [];
 }
 

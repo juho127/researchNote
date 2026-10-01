@@ -464,7 +464,7 @@ function evaluationCard(ev, p, rubric, max, container) {
     h("div.e-m", avatar(ev.evaluator_name), h("span", ev.evaluator_name), h("span", "·"), h("span", fmtDT(ev.created_at)), ev.updated_at !== ev.created_at ? h("span.tiny", `(수정 ${fmtRel(ev.updated_at)})`) : null),
     scoreRow,
     ev.feedback ? mdEl(ev.feedback, "e-b md") : null,
-    h("div.e-actions", ev.can_edit ? h("button.btn.xs", { onclick: () => evaluationEditor(p, ev, rubric, container) }, "수정") : null,
+    h("div.e-actions", ev.can_edit ? (ev.milestone ? h("a.btn.xs", { href: `#/evaluate/${encodeURIComponent(p.category_id)}/${encodeURIComponent(p.id)}?milestone=${ev.milestone}` }, "수정") : h("button.btn.xs", { onclick: () => evaluationEditor(p, ev, rubric, container) }, "수정")) : null,
       ev.can_edit ? h("button.btn.xs.danger", { onclick: async () => { if (await confirmDialog("이 평가를 삭제할까요?", { danger: true, okLabel: "삭제" })) { await del(`/api/evaluations/${ev.id}`); toast("삭제했습니다"); reload(container); } } }, "삭제") : null),
     respBox,
   );
@@ -584,7 +584,7 @@ async function renderReports(body, container) {
 
     // 평가
     let evalBox;
-    const editorOpts = latest ? { submission: { id: latest.id, label: `${m.label} (v${latest.version})` }, tab: "reports", required: !!m.rubric } : null;
+    const evalHref = `#/evaluate/${encodeURIComponent(p.category_id)}/${encodeURIComponent(p.id)}?milestone=${m.id}`;
     const publishBtn = d.is_lead && sm.count
       ? h("button.btn.xs" + (sm.published ? "" : ".primary"), { onclick: async () => { try { await post(`/api/categories/${p.category_id}/evaluations/publish`, { milestone: m.id, visible: !sm.published }); toast(sm.published ? "비공개로 돌렸습니다" : "카테고리 전체 팀에게 공개했습니다"); reload(container); } catch (e) { errToast(e); } } }, sm.published ? "비공개로" : `${m.label} 평가 일괄 공개`)
       : null;
@@ -593,12 +593,12 @@ async function renderReports(body, container) {
       const stale = mine && latest && mine.submission_id !== latest.id;
       evalBox = h("div",
         h("div.row", { style: { flexWrap: "wrap", gap: "8px" } }, h("b", "내 평가"), stale ? pill("이전 버전 평가", "warn sm") : null, h("span.spacer"),
-          latest ? h("button.btn.xs.primary", { onclick: () => evaluationEditor(p, stale ? null : mine, rubric, container, editorOpts) }, mine && !stale ? "수정" : "+ 평가 작성") : h("span.tiny.muted", "제출물이 올라오면 평가할 수 있습니다")),
+          latest ? h("a.btn.lg" + (mine && !stale ? "" : ".primary"), { href: evalHref }, mine && !stale ? "평가 수정" : "평가하기") : h("span.tiny.muted", "제출물이 올라오면 평가할 수 있습니다")),
         mine ? evaluationCard(mine, p, rubric, max, container) : h("div.small.muted", { style: { marginTop: "6px" } }, "아직 평가하지 않았습니다. 다른 평가자의 평가는 보이지 않습니다(블라인드)."));
     } else if (d.is_lead) {
       evalBox = h("div",
         h("div.row", { style: { flexWrap: "wrap", gap: "8px" } }, h("b", `평가 ${sm.count || 0}건`), h("span.small.muted", `공개 ${sm.visible_count || 0}건${sm.avg_total !== null && sm.avg_total !== undefined ? ` · 평균 ${sm.avg_total}/${max}` : ""}`), h("span.spacer"),
-          latest ? h("button.btn.xs", { onclick: () => evaluationEditor(p, null, rubric, container, editorOpts) }, "+ 내 평가") : null, publishBtn),
+          latest ? h("a.btn.lg.primary", { href: evalHref }, evs.some((e) => e.evaluator_id === me.user.id && e.submission_id === latest.id) ? "내 평가 수정" : "평가하기") : null, publishBtn),
         evs.length ? h("div.stack", { style: { marginTop: "8px" } }, evs.map((ev) => evaluationCard(ev, p, rubric, max, container))) : null);
     } else if (sm.published && evs.length) {
       evalBox = h("div",

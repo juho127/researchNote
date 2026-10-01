@@ -8,6 +8,7 @@ import * as Settings from "./pages/settings.js";
 import * as Public from "./pages/apply.js";
 import * as Lobby from "./pages/lobby.js";
 import * as View from "./pages/view.js";
+import * as Evaluate from "./pages/evaluate.js";
 
 const app = document.getElementById("app");
 let reviewCount = 0;
@@ -46,6 +47,7 @@ function layout(content, active) {
     menu.addEventListener("click", () => dd.classList.remove("open"));
     nav.append(dd);
   }
+  if (Evaluate.evalCategories().length) link("#/evaluate", "평가", "evaluate");
   link("#/lobby", "팀 로비", "lobby", me?.pending_joins || null);
   if (me?.is_admin) link("#/admin", "관리자", "admin", (pendingRequests + reviewCount) || null);
   link("#/settings", "설정", "settings");
@@ -103,6 +105,7 @@ async function render() {
     if (!head) { await Home.render(container); }
     else if (head === "team" && id) { active = `team:${id}`; await Team.render(container, id, route.query); }
     else if (head === "project" && id) { const p = await Project.render(container, id, route.query); active = p?.category_id ? `team:${p.category_id}` : "home"; }
+    else if (head === "evaluate") { active = "evaluate"; await Evaluate.render(container, route.parts, route.query); }
     else if (head === "lobby") { active = "lobby"; await Lobby.render(container, route.query); }
     else if (head === "admin") { active = "admin"; await Admin.render(container, route.parts[1], route.query); }
     else if (head === "settings") { active = "settings"; await Settings.render(container); }

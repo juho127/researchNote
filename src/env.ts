@@ -40,6 +40,8 @@ export interface Membership {
   category_name: string;
   /** viewer = 핀 열람 세션(읽기 전용, 구성원 아님) */
   role: CategoryRole | "viewer";
+  /** 카테고리 트랙 (paper | capstone) */
+  track?: string;
 }
 
 /** 핀 열람 세션 (공개 카테고리를 토큰 없이 읽기 전용으로 보는 접근) */

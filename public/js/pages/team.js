@@ -73,10 +73,14 @@ async function renderReportStatus(categoryId, container, query) {
         : d.can_evaluate
           ? h("div", { style: { marginTop: "3px" } }, c.my_evaluated ? pill("내 평가 완료", "ok sm") : c.submission ? pill("미평가", "warn sm") : null)
           : h("div.tiny.muted", { style: { marginTop: "3px" } }, c.visible_count ? `평가 공개 ${c.visible_count}건${c.avg_total !== null ? ` · 평균 ${c.avg_total}/${m.max_total ?? d.max_total}` : ""}` : c.eval_count ? "평가 진행 중" : "");
-      return h("td", sub, ev);
+      const go = d.can_evaluate && c.submission ? h("a.btn.sm" + (c.my_evaluated ? "" : ".primary"), { href: `#/evaluate/${encodeURIComponent(categoryId)}/${encodeURIComponent(p.id)}?milestone=${m.id}`, style: { marginTop: "6px" } }, c.my_evaluated ? "평가 수정" : "평가하기") : null;
+      return h("td", sub, ev, go);
     }))));
-  return h("div", head, h("div.table-wrap", h("table.table.rep-grid", thead, tbody)),
-    h("p.tiny.muted", { style: { marginTop: "8px" } }, d.is_lead ? "평가는 평가자별 초안으로 쌓이고, [일괄 공개] 를 누르면 해당 마일스톤의 모든 팀 평가가 학생에게 익명(평가자 N)으로 공개됩니다. 점수표 CSV 는 평가자 실명 포함." : d.can_evaluate ? "프로젝트 → [보고서] 탭에서 PDF 를 보고 채점합니다. 다른 평가자의 점수는 보이지 않습니다." : "프로젝트 → [보고서] 탭에서 PDF 를 제출합니다. 마감 후 제출은 지각으로 표시됩니다."));
+  const cta = d.can_evaluate && !state.me.viewer
+    ? h("div.eval-cta", h("div", h("b", "보고서 평가"), h("div.small.muted", "평가 페이지에서 팀별 보고서를 보며 문항별로 채점합니다 (블라인드)")), h("a.btn.lg.primary", { href: `#/evaluate/${encodeURIComponent(categoryId)}` }, "평가 페이지로 이동"))
+    : null;
+  return h("div", cta, head, h("div.table-wrap", h("table.table.rep-grid", thead, tbody)),
+    h("p.tiny.muted", { style: { marginTop: "8px" } }, d.is_lead ? "평가는 평가자별 초안으로 쌓이고, [일괄 공개] 를 누르면 해당 마일스톤의 모든 팀 평가가 학생에게 익명(평가자 N)으로 공개됩니다. 점수표 CSV 는 평가자 실명 포함." : d.can_evaluate ? "[평가하기] 또는 상단의 [평가 페이지로 이동]에서 채점합니다. 다른 평가자의 점수는 보이지 않습니다." : "프로젝트 → [보고서] 탭에서 PDF 를 제출합니다. 마감 후 제출은 지각으로 표시됩니다."));
 }
 
 // ---------- 주차별 제출 현황 ----------
