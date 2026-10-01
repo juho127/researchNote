@@ -396,3 +396,28 @@ export function summaryCsv(s: EvaluationSummary): string {
   for (const p of s.projects) L.push([p.title, p.n, ...s.rubric.map((x) => p.axis_avg[x.id] ?? ""), p.avg_total ?? "", p.stdev ?? "", p.submitted ? "Y" : "N"].map(esc).join(","));
   return "﻿" + L.join("\n");
 }
+
+export interface AdminSubmissionRow extends SubmissionRow {
+  project_title: string;
+  owner_name: string;
+  eval_count: number;
+}
+
+/** 관리자 파일 관리: 카테고리의 모든 제출물(전 버전) + 평가 건수 + 저장 용량 합계 */
+export async function adminList(env: Env, categoryId: string) {
+  const cat = await loadCat(env, categoryId);
+  const milestones = milestonesFor(env, cat);
+  const rs = await env.DB
+    .prepare(
+      `SELECT s.id, s.project_id, s.milestone, s.version, s.filename, s.size, s.content_type, s.note, s.late, s.submitted_by, s.created_at,
+              u.name AS submitted_by_name, p.title AS project_title, o.name AS owner_name,
+              (SELECT COUNT(*) FROM evaluations e WHERE e.submission_id = s.id) AS eval_count
+         FROM submissions s JOIN users u ON u.id = s.submitted_by JOIN projects p ON p.id = s.project_id JOIN users o ON o.id = p.owner_id
+        WHERE p.category_id = ? ORDER BY p.title, s.milestone, s.version DESC`
+    )
+    .bind(categoryId)
+    .all<AdminSubmissionRow>();
+  const submissions = rs.results ?? [];
+  const total_bytes = submissions.reduce((a, s) => a + (s.size || 0), 0);
+  return { enabled: milestones.length > 0, milestones, store: env.FILES_R2 ? "r2" : env.FILES ? "kv" : "none", max_bytes: MAX_FILE_BYTES, submissions, total_bytes };
+}

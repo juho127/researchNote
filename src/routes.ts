@@ -256,6 +256,7 @@ add("POST", "/api/admin/categories/:id/viewers/revoke", admin(async (_r, env, ct
   return json({ ok: true, revoked: n });
 }));
 
+add("GET", "/api/admin/submissions", admin(async (_r, env, _c, _p, url) => json(await SB.adminList(env, q(url, "category_id") || ""))));
 add("GET", "/api/admin/requests", admin(async (_r, env, _c, _p, url) => json(await S.listRequests(env, q(url, "status") || "pending"))));
 add("POST", "/api/admin/requests/:id/approve", admin(async (req, env, ctx, p) => json(await S.approveRequest(env, ctx, p.id, await readJson(req)))));
 add("POST", "/api/admin/requests/:id/reject", admin(async (req, env, ctx, p) => {

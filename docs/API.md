@@ -111,6 +111,7 @@
 
 | Method | Path | Body / 설명 |
 |---|---|---|
+| GET | `/api/admin/submissions?category_id=` | 관리자 파일 관리: 카테고리의 모든 보고서 제출물(전 버전, 프로젝트명·올린 사람·평가 건수) + 저장소 종류·용량 합계 |
 | GET | `/api/admin/requests?status=pending|approved|rejected|all` | 토큰 발급 신청 목록 |
 | POST | `/api/admin/requests/:id/approve` | 가입(kind=signup): `{name, id, email, note, category_id, role: member|lead|evaluator, decision_note, force}` → 계정 생성 `{request_id, user}`. 같은 이메일 계정이 있으면 409 `duplicate_email` (force=true 로 강행). 재발급(kind=reissue): `{revoke_existing: bool, decision_note}` → `{request_id, user, revoked}` (계정 생성 없음) |
 | POST | `/api/admin/requests/:id/reject` | `{reason}` |

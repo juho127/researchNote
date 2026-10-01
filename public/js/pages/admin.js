@@ -1,11 +1,12 @@
-import { state, get, post, patch, put, del, h, mount, pill, avatar, stages, stageLabel, track, fmtRel, fmtDT, daysSince, input, textarea, field, select, modal, confirmDialog, toast, errToast, copyText, ACTION_LABEL } from "../core.js";
+import { state, get, post, patch, put, del, h, mount, pill, avatar, stages, stageLabel, track, fmtRel, fmtDT, daysSince, input, textarea, field, select, modal, confirmDialog, toast, errToast, copyText, ACTION_LABEL, downloadFile, getToken } from "../core.js";
+import { shortDate } from "../week.js";
 import { ApiError } from "../core.js";
 import { feedList } from "./home.js";
 
 export async function render(container, sub, query) {
   const tab = sub || "overview";
   const tabs = h("div.tabs");
-  for (const [k, l] of [["overview", "개요"], ["requests", "발급 신청"], ["categories", "카테고리"], ["users", "연구원"], ["tokens", "토큰"], ["activity", "활동 로그"]]) tabs.append(h("button", { class: tab === k ? "active" : "", onclick: () => (location.hash = `#/admin/${k}`) }, l));
+  for (const [k, l] of [["overview", "개요"], ["requests", "발급 신청"], ["categories", "카테고리"], ["users", "연구원"], ["reports", "보고서"], ["tokens", "토큰"], ["activity", "활동 로그"]]) tabs.append(h("button", { class: tab === k ? "active" : "", onclick: () => (location.hash = `#/admin/${k}`) }, l));
   const body = h("div", h("div.loading", h("span.spinner")));
   mount(container, h("header.hero", { style: { padding: "18px 0 6px", border: 0, margin: 0 } }, h("div.eyebrow", "Administration"), h("h1", "관리자 대시보드"), h("p.sub", "카테고리(팀)·연구원·토큰을 관리하고 전체 진행 현황을 봅니다")), tabs, body);
   try {
@@ -13,6 +14,7 @@ export async function render(container, sub, query) {
     else if (tab === "requests") await requests(body, query);
     else if (tab === "categories") await categories(body);
     else if (tab === "users") await users(body, query);
+    else if (tab === "reports") await reports(body, query);
     else if (tab === "tokens") await tokens(body, query);
     else await activity(body);
   } catch (e) { mount(body, h("div.empty", e.message)); }
@@ -343,4 +345,102 @@ async function tokens(body, query) {
 async function activity(body) {
   const rows = await get("/api/admin/activity?limit=150");
   mount(body, h("div.card", feedList(rows)));
+}
+
+// ---------- 보고서 파일 관리 (캡스톤) ----------
+async function adminUpload(path, fd) {
+  const headers = { "X-Client": "web" };
+  const tok = getToken();
+  if (tok) headers.Authorization = `Bearer ${tok}`;
+  const r = await fetch(path, { method: "POST", headers, body: fd });
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(data.message || `HTTP ${r.status}`);
+  return data;
+}
+const mb = (n) => `${(n / 1024 / 1024).toFixed(n < 1024 * 1024 ? 2 : 1)} MB`;
+
+async function reports(body, query) {
+  const cats = (await get("/api/admin/categories")).filter((c) => c.track === "capstone");
+  if (!cats.length) { mount(body, h("div.empty", "캡스톤 트랙 카테고리가 없습니다. 보고서 제출·평가는 캡스톤 트랙에서만 씁니다.")); return; }
+  const cid = cats.some((c) => c.id === query.category_id) ? query.category_id : cats[0].id;
+  const sel = select(cats.map((c) => ({ value: c.id, label: c.name })), { value: cid, onchange: (e) => (location.hash = `#/admin/reports?category_id=${encodeURIComponent(e.target.value)}`) });
+  const refresh = () => render(body.parentElement, "reports", { category_id: cid });
+  const [status, files] = await Promise.all([get(`/api/categories/${cid}/submissions`), get(`/api/admin/submissions?category_id=${encodeURIComponent(cid)}`)]);
+  if (!status.enabled) { mount(body, h("div.row", sel), h("div.empty", "이 카테고리 트랙에는 보고서 마일스톤이 없습니다.")); return; }
+
+  // 마일스톤 헤더: 마감 · 제출 현황 · 공개 · 점수표
+  const head = h("div.row", { style: { flexWrap: "wrap", gap: "10px", margin: "12px 0 14px" } }, status.milestones.map((m) => {
+    const pb = status.publish[m.id];
+    const n = files.submissions.filter((s) => s.milestone === m.id);
+    const teams = new Set(n.map((s) => s.project_id)).size;
+    return h("div.rep-ms",
+      h("div.row", { style: { gap: "8px" } }, h("b", m.label), m.passed ? pill("마감 지남", "mute sm") : null),
+      h("div.tiny.muted", m.due ? `마감 ${shortDate(m.due)} 24:00${m.overridden ? " · 변경됨" : " · 주차 기본"}` : "마감 없음", ` · 제출 ${teams}/${status.projects.length}팀 · 파일 ${n.length}개`),
+      h("div.row", { style: { gap: "6px", marginTop: "6px", flexWrap: "wrap" } },
+        pill(pb.published ? `공개됨 ${pb.total}건` : pb.total ? `비공개 ${pb.visible}/${pb.total}` : "평가 없음", pb.published ? "ok sm" : "mute sm"),
+        pb.total ? h("button.btn.xs" + (pb.published ? "" : ".primary"), { onclick: async () => {
+          if (!pb.published && !(await confirmDialog(`${m.label} 평가 ${pb.total}건을 이 카테고리의 모든 팀에게 공개할까요? (평가자는 '평가자 N'으로 익명 표시)`, { okLabel: "공개" }))) return;
+          try { await post(`/api/categories/${cid}/evaluations/publish`, { milestone: m.id, visible: !pb.published }); toast(pb.published ? "비공개로 돌렸습니다" : "팀에게 공개했습니다"); refresh(); } catch (e) { errToast(e); }
+        } }, pb.published ? "비공개로" : "일괄 공개") : null,
+        h("button.btn.xs", { onclick: () => downloadFile(`/api/categories/${cid}/evaluations/summary?milestone=${m.id}&format=csv`, `${cid}_${m.id}_scores.csv`) }, "점수표 CSV")));
+  }));
+
+  // 관리자 대리 업로드
+  const uploadDialog = (p, m, latest) => {
+    const file = h("input.input", { type: "file", accept: "application/pdf,.pdf" });
+    const note = input({ placeholder: "제출 메모 (선택) 예: 9/28 이메일로 수령", maxlength: 200 });
+    modal({
+      title: `${p.title} · ${m.label} ${latest ? `v${latest.version + 1} 재제출` : "제출"} (관리자 대리)`,
+      body: h("div.stack", field("PDF 파일", file), field("메모", note), h("p.help", `PDF 20 MB 이하. 올린 사람은 관리자(${state.me.user.name})로 기록되고, 마감(${m.due ? shortDate(m.due) + " 24:00" : "없음"}) 이후 업로드는 '지각'으로 표시됩니다.`)),
+      actions: [{ label: "취소" }, { label: "업로드", cls: "primary", onClick: async () => {
+        if (!file.files?.length) { toast("PDF 파일을 선택하세요", true); return false; }
+        const f = file.files[0];
+        if (f.size > files.max_bytes) { toast("20 MB 이하만 올릴 수 있습니다", true); return false; }
+        const fd = new FormData(); fd.append("milestone", m.id); fd.append("note", note.value); fd.append("file", f);
+        try { await adminUpload(`/api/projects/${p.id}/submissions`, fd); toast(`${p.title} · ${m.label} 업로드 완료`); refresh(); } catch (e) { errToast(e); return false; }
+      } }],
+    });
+  };
+  const removeSub = async (s) => {
+    const msg = s.eval_count
+      ? `${s.project_title} · ${s.milestone} v${s.version} 에는 평가 ${s.eval_count}건이 연결되어 있습니다. 파일을 삭제하면 평가의 제출물 연결이 끊어집니다. 삭제할까요?`
+      : `${s.project_title} · ${s.milestone} v${s.version} (${s.filename}) 을 삭제할까요?`;
+    if (!(await confirmDialog(msg, { danger: true, okLabel: "삭제" }))) return;
+    try { await del(`/api/submissions/${s.id}`); toast("삭제했습니다"); refresh(); } catch (e) { errToast(e); }
+  };
+  const dl = (s) => downloadFile(`/api/submissions/${s.id}/file?download=1`, s.filename);
+
+  // 팀 × 마일스톤 표
+  const thead = h("thead", h("tr", h("th", "프로젝트"), ...status.milestones.map((m) => h("th", m.label))));
+  const tbody = h("tbody", status.projects.map((p) => h("tr",
+    h("td", h("a", { href: `#/project/${p.id}?tab=reports` }, p.title), h("div.tiny.muted", p.owner_name), p.status === "paused" ? pill("중단", "mute sm") : null),
+    ...status.milestones.map((m) => {
+      const c = p.cells[m.id];
+      const subs = files.submissions.filter((s) => s.project_id === p.id && s.milestone === m.id);
+      const latest = subs[0] || null;
+      const fileBox = latest
+        ? h("div",
+            h("div.row", { style: { gap: "6px", flexWrap: "wrap" } }, h("b.small", `v${latest.version}`), latest.late ? pill("지각", "warn sm") : pill("제출", "ok sm"), h("span.tiny.muted", `${shortDate(latest.created_at.slice(0, 10))} · ${mb(latest.size)}`)),
+            h("div.tiny", { style: { wordBreak: "break-all" } }, latest.filename),
+            h("div.tiny.muted", `올린 사람 ${latest.submitted_by_name}${latest.note ? " · " + latest.note : ""}`),
+            h("div.row", { style: { gap: "4px", marginTop: "4px", flexWrap: "wrap" } },
+              h("button.btn.xs", { onclick: () => dl(latest) }, "내려받기"),
+              h("button.btn.xs", { onclick: () => uploadDialog(p, m, latest) }, "재제출"),
+              h("button.btn.xs.danger", { onclick: () => removeSub(latest) }, "삭제")),
+            subs.length > 1
+              ? h("details", { style: { marginTop: "4px" } }, h("summary.tiny.muted", `이전 ${subs.length - 1}개`),
+                  h("ul.tiny", { style: { margin: "4px 0 0", paddingLeft: "16px" } }, subs.slice(1).map((s) => h("li", `v${s.version} · ${mb(s.size)} · ${shortDate(s.created_at.slice(0, 10))}${s.late ? " · 지각" : ""} `,
+                    h("a", { href: "#", onclick: (e) => { e.preventDefault(); dl(s); } }, "받기"), " ",
+                    h("a", { href: "#", style: { color: "var(--bad)" }, onclick: (e) => { e.preventDefault(); removeSub(s); } }, "삭제")))))
+              : null)
+        : h("div", h("span.tiny.muted", m.passed ? "미제출" : "—"), " ", p.status === "active" ? h("button.btn.xs.primary", { onclick: () => uploadDialog(p, m, null) }, "업로드") : null);
+      const ev = h("div.tiny.muted", { style: { marginTop: "4px" } }, c.eval_count ? `평가 ${c.visible_count}/${c.eval_count}${c.avg_total !== null ? ` · 평균 ${c.avg_total}/${status.max_total}` : ""}` : "평가 없음");
+      return h("td", fileBox, ev);
+    }))));
+
+  mount(body,
+    h("div.row", { style: { gap: "10px", flexWrap: "wrap" } }, sel, h("span.spacer"), h("span.small.muted", `저장소 ${files.store.toUpperCase()} · 파일 ${files.submissions.length}개 · ${mb(files.total_bytes)}`)),
+    head,
+    status.projects.length ? h("div.table-wrap", h("table.table.rep-grid", thead, tbody)) : h("div.empty", "진행 중인 프로젝트가 없습니다"),
+    h("p.tiny.muted", { style: { marginTop: "8px" } }, "이메일 등으로 받은 보고서는 여기서 팀별로 대신 올립니다. 올린 파일은 평가자가 프로젝트 → [보고서] 탭에서 보고 채점하고, [일괄 공개] 로 팀에게 익명 공개됩니다. 공개된 평가·피드백을 프로젝트 기록으로 정리하는 일은 AI 도구(MCP list_evaluations → log_progress)로 합니다."));
 }
