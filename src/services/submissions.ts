@@ -344,7 +344,7 @@ export async function publishEvaluations(env: Env, ctx: AuthContext, categoryId:
   return { milestone: m.id, visible: on, changed };
 }
 
-export interface SummaryRow { project_id: string; project_title: string; evaluator_id: string; evaluator_name: string; scores: Record<string, number>; total: number | null; visible: boolean; created_at: string }
+export interface SummaryRow { id: string; project_id: string; project_title: string; evaluator_id: string; evaluator_name: string; scores: Record<string, number>; total: number | null; visible: boolean; feedback: string; submission_id: string | null; created_at: string; updated_at: string }
 export interface EvaluationSummary {
   milestone: MilestoneInfo;
   rubric: { id: string; label: string; max: number }[];
@@ -352,6 +352,10 @@ export interface EvaluationSummary {
   rows: SummaryRow[];
   projects: { id: string; title: string; n: number; avg_total: number | null; stdev: number | null; axis_avg: Record<string, number>; submitted: boolean }[];
   evaluators: { id: string; name: string; n: number }[];
+  /** 이 카테고리의 평가자 명단(평가자 역할 + 평가를 남긴 리드·관리자) — 미평가 칸 표시용 */
+  roster: { id: string; name: string; role: string; n: number }[];
+  /** 프로젝트별 최신 제출물 ID (이전 버전 평가 구분용) */
+  latest: Record<string, string>;
   filename: string;
 }
 
@@ -363,13 +367,16 @@ export async function evaluationSummary(env: Env, ctx: AuthContext, categoryId: 
   const m = milestonesFor(env, cat).find((x) => x.id === str(milestone, 40));
   if (!m) bad("milestone 값이 올바르지 않습니다 (예: report1)");
   const rubric = m!.rubric.map((x) => ({ id: x.id, label: x.label, max: x.max }));
-  const [prs, evs, subs] = await env.DB.batch([
+  const [prs, evs, subs, mem] = await env.DB.batch([
     env.DB.prepare(`SELECT id, title FROM projects WHERE category_id = ? AND status IN ('active','paused') ORDER BY title`).bind(categoryId),
-    env.DB.prepare(`SELECT e.project_id, p.title AS project_title, e.evaluator_id, u.name AS evaluator_name, e.scores, e.total, e.visible, e.created_at FROM evaluations e JOIN projects p ON p.id = e.project_id JOIN users u ON u.id = e.evaluator_id WHERE p.category_id = ? AND e.milestone = ? ORDER BY p.title, u.name`).bind(categoryId, m.id),
-    env.DB.prepare(`SELECT DISTINCT s.project_id FROM submissions s JOIN projects p ON p.id = s.project_id WHERE p.category_id = ? AND s.milestone = ?`).bind(categoryId, m.id),
+    env.DB.prepare(`SELECT e.id, e.project_id, p.title AS project_title, e.evaluator_id, u.name AS evaluator_name, e.scores, e.total, e.visible, e.feedback, e.submission_id, e.created_at, e.updated_at FROM evaluations e JOIN projects p ON p.id = e.project_id JOIN users u ON u.id = e.evaluator_id WHERE p.category_id = ? AND e.milestone = ? ORDER BY p.title, u.name`).bind(categoryId, m.id),
+    env.DB.prepare(`SELECT s.project_id, s.id FROM submissions s JOIN projects p ON p.id = s.project_id WHERE p.category_id = ? AND s.milestone = ? ORDER BY s.version DESC`).bind(categoryId, m.id),
+    env.DB.prepare(`SELECT u.id, u.name, m.role FROM memberships m JOIN users u ON u.id = m.user_id WHERE m.category_id = ? AND m.role = 'evaluator' AND u.disabled_at IS NULL ORDER BY u.name`).bind(categoryId),
   ]);
-  const submitted = new Set(((subs.results ?? []) as { project_id: string }[]).map((s) => s.project_id));
-  const rows: SummaryRow[] = ((evs.results ?? []) as { project_id: string; project_title: string; evaluator_id: string; evaluator_name: string; scores: string; total: number | null; visible: number; created_at: string }[]).map((r) => {
+  const latest: Record<string, string> = {};
+  for (const r of (subs.results ?? []) as { project_id: string; id: string }[]) if (!latest[r.project_id]) latest[r.project_id] = r.id;
+  const submitted = new Set(Object.keys(latest));
+  const rows: SummaryRow[] = ((evs.results ?? []) as (Omit<SummaryRow, "scores" | "visible"> & { scores: string; visible: number })[]).map((r) => {
     let scores: Record<string, number> = {};
     try { scores = JSON.parse(r.scores || "{}"); } catch { scores = {}; }
     return { ...r, scores, visible: !!r.visible };
@@ -392,7 +399,9 @@ export async function evaluationSummary(env: Env, ctx: AuthContext, categoryId: 
     e.n += 1;
     evMap.set(r.evaluator_id, e);
   }
-  return { milestone: m, rubric, max_total: rubric.reduce((a, x) => a + x.max, 0), rows, projects, evaluators: [...evMap.values()], filename: `${cat.id}_${m.id}_scores.csv` };
+  const roster = ((mem.results ?? []) as { id: string; name: string; role: string }[]).map((u) => ({ ...u, n: evMap.get(u.id)?.n ?? 0 }));
+  for (const e of evMap.values()) if (!roster.some((u) => u.id === e.id)) roster.push({ id: e.id, name: e.name, role: "lead", n: e.n });
+  return { milestone: m, rubric, max_total: rubric.reduce((a, x) => a + x.max, 0), rows, projects, evaluators: [...evMap.values()], roster, latest, filename: `${cat.id}_${m.id}_scores.csv` };
 }
 
 export function summaryCsv(s: EvaluationSummary): string {

@@ -2,7 +2,7 @@
 //   #/team/<cat>?view=evaluate&milestone=     → 팀 페이지의 [평가] 탭: 팀 목록 · 내 평가 진행 현황 (renderList)
 //   #/evaluate/<cat>/<project>?milestone=     → 팀별 채점 화면 (보고서 새 창 보기 + 문항별 선택 + 피드백)
 //   #/evaluate[/<cat>]                        → 해당 팀의 [평가] 탭으로 이동
-import { state, get, post, h, mount, pill, toast, errToast, openFileTab, textarea, fmtDT } from "../core.js";
+import { state, get, post, patch, h, mount, pill, toast, errToast, openFileTab, downloadFile, textarea, mdEl, fmtDT } from "../core.js";
 
 /** 내가 평가할 수 있는 캡스톤 카테고리 */
 export function evalCategories() {
@@ -12,7 +12,7 @@ export function evalCategories() {
 }
 
 const enc = encodeURIComponent;
-const listHash = (cid, mid) => `#/team/${enc(cid)}?view=evaluate${mid ? `&milestone=${enc(mid)}` : ""}`;
+const listHash = (cid, mid, sub) => `#/team/${enc(cid)}?view=evaluate${mid ? `&milestone=${enc(mid)}` : ""}${sub ? `&sub=${sub}` : ""}`;
 const formHash = (cid, pid, mid) => `#/evaluate/${enc(cid)}/${enc(pid)}?milestone=${enc(mid)}`;
 
 export async function render(container, parts, query) {
@@ -40,7 +40,16 @@ export async function renderList(cid, query) {
   const done = targets.filter((p) => p.cells[m.id].my_evaluated).length;
   const pct = targets.length ? Math.round((done / targets.length) * 100) : 0;
 
-  const tabs = h("div.seg", d.milestones.map((x) => h("button", { class: x.id === m.id ? "active" : "", onclick: () => (location.hash = listHash(cid, x.id)) }, x.label)));
+  // 리드·관리자: [평가 현황] (기본) · [내 평가] · [종합 점수]
+  const sub = d.is_lead ? (["status", "mine", "composite"].includes(query.sub) ? query.sub : "status") : "mine";
+  const tabs = h("div.seg", d.milestones.map((x) => h("button", { class: x.id === m.id ? "active" : "", onclick: () => (location.hash = listHash(cid, x.id, d.is_lead ? sub : "")) }, x.label)));
+  const subSeg = d.is_lead ? h("div.seg", [["status", "평가 현황"], ["mine", "내 평가"], ["composite", "종합 점수"]].map(([k, l]) => h("button", { class: sub === k ? "active" : "", onclick: () => (location.hash = listHash(cid, m.id, k)) }, l))) : null;
+  if (sub === "status" || sub === "composite") {
+    const content = sub === "status" ? await statusView(cid, m) : await compositeSection(cid, { editable: !!state.me.is_admin, onSaved: () => window.dispatchEvent(new Event("rn:refresh")) });
+    return h("div",
+      h("div.row", { style: { gap: "12px", flexWrap: "wrap", margin: "0 0 14px" } }, subSeg, sub === "status" ? tabs : null),
+      content);
+  }
   const criteria = h("div.card.eval-criteria",
     h("div.row", h("b", `${m.label} 평가 기준`), h("span.spacer"), h("span.small.muted", `만점 ${m.max_total} · ${m.rubric?.some((x) => x.choices) ? "문항마다 선택, 모든 문항 필수" : "축별 점수"}`)),
     h("ol.small", { style: { margin: "8px 0 0", paddingLeft: "20px" } }, (m.rubric || []).map((x) => h("li", x.hint || x.label, x.choices ? h("span.tiny.muted", `  (${x.choices.map((c) => `${c.label} ${c.score}`).join(" · ")})`) : h("span.tiny.muted", `  (0~${x.max})`)))));
@@ -63,6 +72,7 @@ export async function renderList(cid, query) {
   });
 
   return h("div",
+    subSeg ? h("div", { style: { marginBottom: "10px" } }, subSeg) : null,
     h("p.small.muted", { style: { margin: "0 0 4px" } }, "다른 평가자의 점수는 보이지 않습니다(블라인드). 평가는 리드가 일괄 공개할 때 학생에게 '평가자 N'으로 익명 공개됩니다."),
     h("div.row", { style: { gap: "12px", flexWrap: "wrap", margin: "6px 0 14px" } }, tabs, h("span.spacer"),
       h("div.eval-progress", h("div.small", h("b", `내 평가 ${done} / ${targets.length}팀`), m.due ? h("span.muted", ` · 제출 마감 ${m.due}`) : null), h("div.bar", h("i", { style: { width: `${pct}%` } })))),
@@ -153,7 +163,6 @@ async function evalForm(container, cid, pid, query) {
 
 /** 리드·관리자: 회차 가중치 종합 점수 카드. editable 이면 가중치 편집(관리자) */
 export async function compositeSection(cid, { editable = false, onSaved } = {}) {
-  const { patch, downloadFile } = await import("../core.js");
   const s = await get(`/api/categories/${enc(cid)}/evaluations/composite`);
   const ms = s.milestones;
   const weightLine = h("span.small.muted", `가중치 ${ms.map((m) => `${m.label} ${m.weight}%`).join(" · ")}${ms.some((m) => m.weight_overridden) ? " (변경됨)" : " (기본)"}`);
@@ -185,4 +194,54 @@ export async function compositeSection(cid, { editable = false, onSaved } = {}) 
     editBox,
     h("p.tiny.muted", { style: { margin: "6px 0 8px" } }, "회차 점수 = 평가자 전원의 합계 평균(초안 포함). 종합 = Σ (회차 평균 ÷ 회차 만점 × 100) × 가중치. 아직 평가가 없는 회차는 0점으로 반영되므로 학기 중에는 반영된 회차까지의 누적 점수입니다."),
     h("div.table-wrap", table));
+}
+
+/** 리드·관리자: 평가 현황 (프로젝트 × 평가자). 칸을 누르면 문항별 점수·피드백 */
+async function statusView(cid, m) {
+  const s = await get(`/api/categories/${enc(cid)}/evaluations/summary?milestone=${enc(m.id)}`);
+  const rubric = m.rubric || s.rubric;
+  const roster = s.roster;
+  const projects = s.projects;
+  const submittedN = projects.filter((p) => p.submitted).length;
+  const detail = h("div.card.eval-detail", { hidden: true });
+  let activeCell = null;
+  const show = (cell, r, p) => {
+    if (activeCell) activeCell.classList.remove("active");
+    if (activeCell === cell) { activeCell = null; detail.hidden = true; return; }
+    activeCell = cell; cell.classList.add("active");
+    detail.hidden = false;
+    mount(detail,
+      h("div.row", { style: { gap: "8px", flexWrap: "wrap" } }, h("b", `${p.title}`), h("span.muted", "·"), h("b", r.evaluator_name), h("span.spacer"),
+        r.visible ? pill("공개됨", "ok sm") : pill("초안 (학생 비공개)", "warn sm"),
+        r.submission_id && s.latest[p.id] && r.submission_id !== s.latest[p.id] ? pill("이전 버전 평가", "warn sm") : null,
+        h("span.tiny.muted", `작성 ${fmtDT(r.created_at)}${r.updated_at !== r.created_at ? ` · 수정 ${fmtDT(r.updated_at)}` : ""}`)),
+      h("div.row", { style: { gap: "6px", flexWrap: "wrap", margin: "8px 0" } },
+        rubric.map((x) => { const v = r.scores[x.id]; const c = x.choices?.find((c) => c.score === v); return h("span.tag", { title: x.hint || "" }, `${x.label} ${v ?? "—"}/${x.max}${c ? ` (${c.label})` : ""}`); }),
+        r.total !== null ? pill(`합계 ${r.total}/${s.max_total}`, "ok") : null),
+      r.feedback ? mdEl(r.feedback, "md") : h("div.small.muted", "피드백 없음"));
+    detail.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  };
+  const thead = h("thead", h("tr", h("th", "프로젝트"),
+    ...roster.map((u) => h("th.c", u.name, h("div.tiny.muted", `${u.n}/${submittedN}${u.role === "evaluator" ? "" : " · 리드"}`))),
+    h("th.c", "평균", h("div.tiny.muted", `/${s.max_total}`))));
+  const tbody = h("tbody", projects.map((p) => h("tr",
+    h("td", p.title, p.submitted ? null : h("div.tiny.muted", "미제출")),
+    ...roster.map((u) => {
+      const r = s.rows.find((x) => x.project_id === p.id && x.evaluator_id === u.id);
+      if (!r) return h("td.c", p.submitted ? h("span.eval-miss", "미평가") : h("span.tiny.muted", "—"));
+      const stale = r.submission_id && s.latest[p.id] && r.submission_id !== s.latest[p.id];
+      const cell = h("button.eval-cell" + (stale ? ".stale" : ""), { type: "button", title: "눌러서 문항별 점수·피드백 보기" }, h("b", r.total ?? "—"), r.feedback ? h("span.tiny", " 💬") : null);
+      cell.addEventListener("click", () => show(cell, r, p));
+      return h("td.c", cell);
+    }),
+    h("td.c", p.avg_total !== null ? h("b", String(p.avg_total)) : h("span.tiny.muted", "—"), p.stdev !== null ? h("div.tiny.muted", `±${p.stdev}`) : null))));
+  const doneAll = s.rows.filter((r) => projects.find((p) => p.id === r.project_id)?.submitted).length;
+  const need = submittedN * roster.length;
+  return h("div",
+    h("div.row", { style: { gap: "10px", flexWrap: "wrap", marginBottom: "8px" } },
+      h("b", `${m.label} 평가 현황`), h("span.small.muted", `완료 ${doneAll} / ${need}칸 · 평가자 ${roster.length}명 · 제출 ${submittedN}팀${m.due ? ` · 제출 마감 ${m.due}` : ""}`), h("span.spacer"),
+      h("button.btn.sm", { onclick: () => downloadFile(`/api/categories/${enc(cid)}/evaluations/summary?milestone=${m.id}&format=csv`, `${cid}_${m.id}_scores.csv`) }, "점수표 CSV")),
+    roster.length ? h("div.table-wrap", h("table.table.eval-matrix", thead, tbody)) : h("div.empty", "이 팀에 평가자가 없습니다. [관리자] → 연구원에서 평가자 역할을 지정하세요."),
+    h("p.tiny.muted", { style: { marginTop: "6px" } }, "점수(합계)를 누르면 문항별 점수와 피드백이 아래에 펼쳐집니다. 💬 는 피드백 있음, 노란 칸은 팀이 새 버전을 낸 뒤의 이전 버전 평가입니다. 리드·관리자에게만 보이는 화면입니다(평가자 실명)."),
+    detail);
 }
