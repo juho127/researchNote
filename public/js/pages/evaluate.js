@@ -1,7 +1,7 @@
-// 평가 페이지 (캡스톤 보고서 채점 전용, 평가자·리드·관리자)
-//   #/evaluate                       → 평가할 카테고리 선택 (하나면 바로 이동)
-//   #/evaluate/<cat>?milestone=       → 팀 목록 · 내 평가 진행 현황
-//   #/evaluate/<cat>/<project>?milestone= → 팀별 채점 화면 (보고서 새 창 보기 + 문항별 선택 + 피드백)
+// 보고서 평가 (캡스톤, 평가자·리드·관리자). 평가는 팀(카테고리)에 속한다.
+//   #/team/<cat>?view=evaluate&milestone=     → 팀 페이지의 [평가] 탭: 팀 목록 · 내 평가 진행 현황 (renderList)
+//   #/evaluate/<cat>/<project>?milestone=     → 팀별 채점 화면 (보고서 새 창 보기 + 문항별 선택 + 피드백)
+//   #/evaluate[/<cat>]                        → 해당 팀의 [평가] 탭으로 이동
 import { state, get, post, h, mount, pill, toast, errToast, openFileTab, textarea, fmtDT } from "../core.js";
 
 /** 내가 평가할 수 있는 캡스톤 카테고리 */
@@ -12,24 +12,15 @@ export function evalCategories() {
 }
 
 const enc = encodeURIComponent;
-const listHash = (cid, mid) => `#/evaluate/${enc(cid)}${mid ? `?milestone=${enc(mid)}` : ""}`;
+const listHash = (cid, mid) => `#/team/${enc(cid)}?view=evaluate${mid ? `&milestone=${enc(mid)}` : ""}`;
 const formHash = (cid, pid, mid) => `#/evaluate/${enc(cid)}/${enc(pid)}?milestone=${enc(mid)}`;
 
 export async function render(container, parts, query) {
   const [, cid, pid] = parts;
-  if (!cid) return chooseCategory(container);
   if (pid) return evalForm(container, cid, pid, query);
-  return evalList(container, cid, query);
-}
-
-function chooseCategory(container) {
-  const cats = evalCategories();
-  if (cats.length === 1) { location.replace(listHash(cats[0].category_id)); return; }
-  mount(container,
-    h("header.hero", h("div.eyebrow", "Evaluation"), h("h1", "보고서 평가"), h("p.sub", "평가할 과목(팀)을 고르세요")),
-    cats.length
-      ? h("div.stack", cats.map((c) => h("a.card.eval-cat", { href: listHash(c.category_id) }, h("b", c.category_name), h("span.tiny.muted", c.role === "evaluator" ? "평가자" : "리드"))))
-      : h("div.empty", "평가 권한이 있는 캡스톤 과목이 없습니다."));
+  const target = cid || evalCategories()[0]?.category_id;
+  if (target) location.replace(listHash(target, query.milestone));
+  else mount(container, h("div.empty", "평가 권한이 있는 캡스톤 팀이 없습니다."));
 }
 
 /** 제출물이 있는 마일스톤 중 마지막(가장 최근) 것을 기본으로 */
@@ -39,11 +30,11 @@ function pickMilestone(d, want) {
   return withSubs[withSubs.length - 1] || d.milestones[0];
 }
 
-async function evalList(container, cid, query) {
+/** 팀 페이지 [평가] 탭 본문 */
+export async function renderList(cid, query) {
   const d = await get(`/api/categories/${enc(cid)}/submissions`);
-  const cat = (state.me.memberships || []).find((m) => m.category_id === cid);
-  if (!d.enabled) { mount(container, h("div.empty", "이 과목에는 보고서 마일스톤이 없습니다.")); return; }
-  if (!d.can_evaluate) { mount(container, h("div.empty", "이 과목의 평가 권한이 없습니다.")); return; }
+  if (!d.enabled) return h("div.empty", "이 팀에는 보고서 마일스톤이 없습니다.");
+  if (!d.can_evaluate) return h("div.empty", "이 팀의 평가 권한이 없습니다.");
   const m = pickMilestone(d, query.milestone);
   const targets = d.projects.filter((p) => p.cells[m.id]?.submission);
   const done = targets.filter((p) => p.cells[m.id].my_evaluated).length;
@@ -71,8 +62,8 @@ async function evalList(container, cid, query) {
         : null);
   });
 
-  mount(container,
-    h("header.hero", { style: { paddingBottom: "8px" } }, h("div.eyebrow", "Evaluation"), h("h1", "보고서 평가"), h("p.sub", `${cat?.category_name || cid} · 다른 평가자의 점수는 보이지 않습니다(블라인드). 평가는 리드가 일괄 공개할 때 학생에게 익명으로 공개됩니다.`)),
+  return h("div",
+    h("p.small.muted", { style: { margin: "0 0 4px" } }, "다른 평가자의 점수는 보이지 않습니다(블라인드). 평가는 리드가 일괄 공개할 때 학생에게 '평가자 N'으로 익명 공개됩니다."),
     h("div.row", { style: { gap: "12px", flexWrap: "wrap", margin: "6px 0 14px" } }, tabs, h("span.spacer"),
       h("div.eval-progress", h("div.small", h("b", `내 평가 ${done} / ${targets.length}팀`), m.due ? h("span.muted", ` · 제출 마감 ${m.due}`) : null), h("div.bar", h("i", { style: { width: `${pct}%` } })))),
     criteria,
@@ -85,7 +76,8 @@ async function evalForm(container, cid, pid, query) {
   const m = ps.milestones.find((x) => x.id === query.milestone) || pickMilestone(d, query.milestone);
   const proj = d.projects.find((p) => p.id === pid);
   const latest = ps.submissions.filter((s) => s.milestone === m.id)[0] || null;
-  const back = h("a.small", { href: listHash(cid, m.id) }, "← 평가 목록");
+  const catName = (state.me.memberships || []).find((x) => x.category_id === cid)?.category_name || "";
+  const back = h("a.small", { href: listHash(cid, m.id) }, `← ${catName} 평가 목록`);
   if (!ps.can_evaluate) { mount(container, back, h("div.empty", "이 프로젝트의 평가 권한이 없습니다.")); return; }
   if (!latest) { mount(container, back, h("div.empty", `${proj?.title || "이 팀"}은(는) 아직 ${m.label}를 제출하지 않았습니다.`)); return; }
   const meId = state.me.user.id;

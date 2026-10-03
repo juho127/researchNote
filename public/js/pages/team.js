@@ -2,19 +2,22 @@ import { state, get, post, h, mount, pill, avatar, stages, stageLabel, fmtRel, f
 import { projectCard, feedList, newProjectDialog } from "./home.js";
 import { teamNoticeView, pinnedStrip } from "./notices.js";
 import { DOW, shortDate } from "../week.js";
+import { renderList as renderEvalList } from "./evaluate.js";
 
 export async function render(container, categoryId, query) {
   mount(container, h("div.loading", h("span.spinner"), " 불러오는 중…"));
   const [detail, board, notices] = await Promise.all([get(`/api/categories/${categoryId}`), get(`/api/categories/${categoryId}/board`), get(`/api/notices?category_id=${encodeURIComponent(categoryId)}&limit=50`).catch(() => [])]);
   const cat = detail.category;
-  const view = query.view || "board";
   const me = state.me;
+  const canEval = cat.track === "capstone" && ["evaluator", "lead", "admin"].includes(detail.my_role);
+  const view = query.view || (detail.my_role === "evaluator" && canEval ? "evaluate" : "board");
 
   const viewSeg = h("div.seg");
   const jrCount = (detail.join_requests || []).length;
   const weeklyTab = cat.week_start || cat.track === "capstone" ? [["weekly", "주차별"]] : [];
   const reportsTab = cat.track === "capstone" ? [["reports", "보고서"]] : [];
-  for (const [k, l] of [["board", "보드"], ["list", "목록"], ...weeklyTab, ...reportsTab, ["notices", `공지${notices.length ? " " + notices.length : ""}`], ["members", `구성원${jrCount ? " · 가입 요청 " + jrCount : ""}`], ["review", `검토 대기${detail.review_queue.length ? " " + detail.review_queue.length : ""}`], ["feed", "활동"]]) {
+  const evalTab = canEval ? [["evaluate", "평가"]] : [];
+  for (const [k, l] of [["board", "보드"], ["list", "목록"], ...weeklyTab, ...reportsTab, ...evalTab, ["notices", `공지${notices.length ? " " + notices.length : ""}`], ["members", `구성원${jrCount ? " · 가입 요청 " + jrCount : ""}`], ["review", `검토 대기${detail.review_queue.length ? " " + detail.review_queue.length : ""}`], ["feed", "활동"]]) {
     viewSeg.append(h("button", { class: view === k ? "active" : "", onclick: () => (location.hash = `#/team/${categoryId}?view=${k}`) }, l));
   }
 
@@ -38,6 +41,7 @@ export async function render(container, categoryId, query) {
   else if (view === "review") body = renderReview(detail.review_queue);
   else if (view === "weekly") body = await renderWeekly(categoryId);
   else if (view === "reports") body = await renderReportStatus(categoryId, container, query);
+  else if (view === "evaluate" && canEval) body = await renderEvalList(categoryId, query);
   else if (view === "notices") body = await teamNoticeView(detail, categoryId);
   else body = h("div.card", feedList(detail.activity));
 
@@ -77,10 +81,10 @@ async function renderReportStatus(categoryId, container, query) {
       return h("td", sub, ev, go);
     }))));
   const cta = d.can_evaluate && !state.me.viewer
-    ? h("div.eval-cta", h("div", h("b", "보고서 평가"), h("div.small.muted", "평가 페이지에서 팀별 보고서를 보며 문항별로 채점합니다 (블라인드)")), h("a.btn.lg.primary", { href: `#/evaluate/${encodeURIComponent(categoryId)}` }, "평가 페이지로 이동"))
+    ? h("div.eval-cta", h("div", h("b", "보고서 평가"), h("div.small.muted", "[평가] 탭에서 팀별 보고서를 보며 문항별로 채점합니다 (블라인드)")), h("a.btn.lg.primary", { href: `#/team/${encodeURIComponent(categoryId)}?view=evaluate` }, "평가 탭으로 이동"))
     : null;
   return h("div", cta, head, h("div.table-wrap", h("table.table.rep-grid", thead, tbody)),
-    h("p.tiny.muted", { style: { marginTop: "8px" } }, d.is_lead ? "평가는 평가자별 초안으로 쌓이고, [일괄 공개] 를 누르면 해당 마일스톤의 모든 팀 평가가 학생에게 익명(평가자 N)으로 공개됩니다. 점수표 CSV 는 평가자 실명 포함." : d.can_evaluate ? "[평가하기] 또는 상단의 [평가 페이지로 이동]에서 채점합니다. 다른 평가자의 점수는 보이지 않습니다." : "프로젝트 → [보고서] 탭에서 PDF 를 제출합니다. 마감 후 제출은 지각으로 표시됩니다."));
+    h("p.tiny.muted", { style: { marginTop: "8px" } }, d.is_lead ? "평가는 평가자별 초안으로 쌓이고, [일괄 공개] 를 누르면 해당 마일스톤의 모든 팀 평가가 학생에게 익명(평가자 N)으로 공개됩니다. 점수표 CSV 는 평가자 실명 포함." : d.can_evaluate ? "[평가하기] 또는 [평가] 탭에서 채점합니다. 다른 평가자의 점수는 보이지 않습니다." : "프로젝트 → [보고서] 탭에서 PDF 를 제출합니다. 마감 후 제출은 지각으로 표시됩니다."));
 }
 
 // ---------- 주차별 제출 현황 ----------
