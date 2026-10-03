@@ -132,7 +132,10 @@ export function weekday(dateStr) {
 }
 export function initials(name) {
   const s = String(name || "?").trim();
-  return /^[A-Za-z]/.test(s) ? s.split(/\s+/).map((w) => w[0]).join("").slice(0, 2).toUpperCase() : s.slice(0, 2);
+  if (/^[A-Za-z]/.test(s)) return s.split(/\s+/).map((w) => w[0]).join("").slice(0, 2).toUpperCase();
+  // 한글 이름은 세 글자까지 (괄호·기호·보이지 않는 문자는 빼고)
+  const ko = s.replace(/[\[(（].*$/, "").replace(/[^가-힣]/g, "");
+  return ko ? ko.slice(0, 3) : s.slice(0, 2);
 }
 
 export const STATUS_LABEL = { active: "진행 중", paused: "일시 중지", done: "완료", archived: "보관" };
@@ -169,7 +172,7 @@ export function stageIndex(id, trackId) { const list = trackId ? stages(trackId)
 export const ROLE_LABEL = { admin: "관리자", lead: "리드", member: "구성원", evaluator: "평가자", viewer: "열람자" };
 
 export function pill(text, cls = "") { return h("span.pill" + (cls ? "." + cls.split(" ").join(".") : ""), text); }
-export function avatar(name, lg = false) { return h("span.avatar" + (lg ? ".lg" : ""), { title: name }, initials(name)); }
+export function avatar(name, lg = false) { const t = initials(name); return h("span.avatar" + (lg ? ".lg" : "") + (t.length >= 3 ? ".n3" : ""), { title: name }, t); }
 
 // ---------- 마크다운 (서버 렌더러와 동일 규칙) ----------
 function inline(s) {

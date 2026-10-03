@@ -85,6 +85,7 @@ hr{border:0;border-top:1px solid var(--rule);margin:16px 0}
 .tag{font-size:11px;font-weight:700;letter-spacing:.03em;color:var(--muted);background:var(--wash);border-radius:999px;padding:3px 10px}
 .avatar{width:26px;height:26px;border-radius:50%;background:var(--wash);color:var(--navy);display:inline-grid;place-items:center;font-size:11px;font-weight:800;flex:none}
 .avatar.lg{width:36px;height:36px;font-size:13px}
+.avatar.n3{font-size:8.5px;letter-spacing:-.6px}.avatar.lg.n3{font-size:11px;letter-spacing:-.5px}
 
 /* ---------- 버튼/폼 ---------- */
 .btn{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--rule);background:var(--card);color:var(--navy);border-radius:9px;padding:7px 13px;font-size:13.5px;font-weight:600;cursor:pointer;transition:border-color .15s,background .15s;white-space:nowrap}
