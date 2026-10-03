@@ -91,6 +91,11 @@ add("GET", "/api/categories/:id/evaluations/summary", async (_r, env, ctx, p, ur
   if (q(url, "format") === "csv") return new Response(SB.summaryCsv(s), { headers: { "Content-Type": "text/csv; charset=utf-8", "Content-Disposition": `attachment; filename*=UTF-8''${encodeURIComponent(s.filename)}` } });
   return json(s);
 });
+add("GET", "/api/categories/:id/evaluations/composite", async (_r, env, ctx, p, url) => {
+  const s = await SB.compositeScores(env, ctx, p.id);
+  if (q(url, "format") === "csv") return new Response(SB.compositeCsv(s), { headers: { "Content-Type": "text/csv; charset=utf-8", "Content-Disposition": `attachment; filename*=UTF-8''${encodeURIComponent(s.filename)}` } });
+  return json(s);
+});
 add("GET", "/api/projects/:id/submissions", async (_r, env, ctx, p) => json(await SB.listForProject(env, ctx, p.id)));
 add("POST", "/api/projects/:id/submissions", async (req, env, ctx, p) => json(await SB.upload(env, ctx, req, p.id), 201));
 add("GET", "/api/submissions/:id/file", async (_r, env, ctx, p, url) => SB.fileResponse(env, ctx, p.id, q(url, "download") === "1"));

@@ -2,7 +2,7 @@ import { state, get, post, h, mount, pill, avatar, stages, stageLabel, fmtRel, f
 import { projectCard, feedList, newProjectDialog } from "./home.js";
 import { teamNoticeView, pinnedStrip } from "./notices.js";
 import { DOW, shortDate } from "../week.js";
-import { renderList as renderEvalList } from "./evaluate.js";
+import { renderList as renderEvalList, compositeSection } from "./evaluate.js";
 
 export async function render(container, categoryId, query) {
   mount(container, h("div.loading", h("span.spinner"), " 불러오는 중…"));
@@ -83,7 +83,8 @@ async function renderReportStatus(categoryId, container, query) {
   const cta = d.can_evaluate && !state.me.viewer
     ? h("div.eval-cta", h("div", h("b", "보고서 평가"), h("div.small.muted", "[평가] 탭에서 팀별 보고서를 보며 문항별로 채점합니다 (블라인드)")), h("a.btn.lg.primary", { href: `#/team/${encodeURIComponent(categoryId)}?view=evaluate` }, "평가 탭으로 이동"))
     : null;
-  return h("div", cta, head, h("div.table-wrap", h("table.table.rep-grid", thead, tbody)),
+  const composite = d.is_lead && d.projects.length ? await compositeSection(categoryId, { editable: !!state.me.is_admin, onSaved: refresh }) : null;
+  return h("div", cta, head, h("div.table-wrap", h("table.table.rep-grid", thead, tbody)), composite,
     h("p.tiny.muted", { style: { marginTop: "8px" } }, d.is_lead ? "평가는 평가자별 초안으로 쌓이고, [일괄 공개] 를 누르면 해당 마일스톤의 모든 팀 평가가 학생에게 익명(평가자 N)으로 공개됩니다. 점수표 CSV 는 평가자 실명 포함." : d.can_evaluate ? "[평가하기] 또는 [평가] 탭에서 채점합니다. 다른 평가자의 점수는 보이지 않습니다." : "프로젝트 → [보고서] 탭에서 PDF 를 제출합니다. 마감 후 제출은 지각으로 표시됩니다."));
 }
 

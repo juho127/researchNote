@@ -26,6 +26,8 @@ export interface CategoryRow {
   week_due_dow: number;
   /** 보고서 마감 덮어쓰기 JSON {마일스톤id: 'YYYY-MM-DD'} (없으면 주차 기본값) */
   milestone_due: string | null;
+  /** 종합 점수 회차 가중치 덮어쓰기 JSON {마일스톤id: 퍼센트} (없으면 트랙 기본값) */
+  milestone_weight: string | null;
   created_at: string;
   archived_at: string | null;
   member_count?: number;
@@ -62,11 +64,11 @@ async function loadCategory(env: Env, id: string): Promise<CategoryRow> {
 
 const JOIN_POLICIES = ["open", "approval", "closed"] as const;
 
-type WeekInput = { week_start?: unknown; week_count?: unknown; week_due_dow?: unknown; milestone_due?: unknown };
+type WeekInput = { week_start?: unknown; week_count?: unknown; week_due_dow?: unknown; milestone_due?: unknown; milestone_weight?: unknown };
 
 /** 주차 설정 입력 파싱: week_start(YYYY-MM-DD, 빈 문자열 = 해제), week_count(1~30), week_due_dow(0~6) */
-function parseWeekInput(input: WeekInput): { week_start?: string | null; week_count?: number; week_due_dow?: number; milestone_due?: string | null } {
-  const out: { week_start?: string | null; week_count?: number; week_due_dow?: number; milestone_due?: string | null } = {};
+function parseWeekInput(input: WeekInput): { week_start?: string | null; week_count?: number; week_due_dow?: number; milestone_due?: string | null; milestone_weight?: string | null } {
+  const out: { week_start?: string | null; week_count?: number; week_due_dow?: number; milestone_due?: string | null; milestone_weight?: string | null } = {};
   if (input.week_start !== undefined && input.week_start !== null) {
     const v = str(input.week_start, 10);
     if (v && !isDateStr(v)) bad("week_start 는 YYYY-MM-DD 형식");
@@ -88,6 +90,23 @@ function parseWeekInput(input: WeekInput): { week_start?: string | null; week_co
         m[k] = d;
       }
       out.milestone_due = Object.keys(m).length ? JSON.stringify(m) : null;
+    }
+  }
+  if (input.milestone_weight !== undefined) {
+    if (input.milestone_weight === null || input.milestone_weight === "") out.milestone_weight = null;
+    else {
+      let o: unknown = input.milestone_weight;
+      if (typeof o === "string") { try { o = JSON.parse(o); } catch { bad("milestone_weight 는 {마일스톤id: 퍼센트} 객체여야 합니다"); } }
+      if (!o || typeof o !== "object" || Array.isArray(o)) bad("milestone_weight 는 {마일스톤id: 퍼센트} 객체여야 합니다");
+      const m: Record<string, number> = {};
+      for (const [k, v] of Object.entries(o as Record<string, unknown>)) {
+        const n = Number(v);
+        if (!Number.isFinite(n) || n < 0 || n > 100) bad(`${k} 가중치는 0~100(%) 이어야 합니다`);
+        m[str(k, 40)] = Math.round(n * 10) / 10;
+      }
+      const sum = Object.values(m).reduce((a, b) => a + b, 0);
+      if (Object.keys(m).length && Math.abs(sum - 100) > 0.01) bad(`가중치 합계가 100% 여야 합니다 (현재 ${Math.round(sum * 10) / 10}%)`);
+      out.milestone_weight = Object.keys(m).length ? JSON.stringify(m) : null;
     }
   }
   return out;
@@ -165,6 +184,11 @@ export async function updateCategory(env: Env, ctx: AuthContext, id: string, inp
     sets.push("milestone_due = ?");
     params.push(wk.milestone_due);
     notes.push(wk.milestone_due ? "보고서 마감 변경" : "보고서 마감 기본값");
+  }
+  if (wk.milestone_weight !== undefined && wk.milestone_weight !== (c.milestone_weight ?? null)) {
+    sets.push("milestone_weight = ?");
+    params.push(wk.milestone_weight);
+    notes.push(wk.milestone_weight ? "회차 가중치 변경" : "회차 가중치 기본값");
   }
   if (input.name !== undefined) {
     const n = str(input.name, 100);

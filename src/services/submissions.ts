@@ -66,6 +66,8 @@ type SubmissionRaw = SubmissionRow & { storage_key: string };
 export interface MilestoneInfo extends ReportDef {
   rubric: RubricAxis[];    // 이 마일스톤의 평가 기준 (전용 기준 없으면 트랙 루브릭)
   max_total: number;
+  weight: number;          // 종합 점수 가중치(%)
+  weight_overridden: boolean;
   due: string | null;      // YYYY-MM-DD
   due_at: string | null;   // ISO (그날 자정 APP_TZ)
   overridden: boolean;     // 카테고리 설정으로 덮어쓴 마감인지
@@ -79,12 +81,13 @@ interface CatRow {
   week_count: number;
   week_due_dow: number;
   milestone_due: string | null;
+  milestone_weight: string | null;
 }
 
 const SUB_SELECT = `SELECT s.*, u.name AS submitted_by_name FROM submissions s JOIN users u ON u.id = s.submitted_by`;
 
 async function loadCat(env: Env, categoryId: string): Promise<CatRow> {
-  const c = await env.DB.prepare(`SELECT id, track, week_start, week_count, week_due_dow, milestone_due FROM categories WHERE id = ?`).bind(categoryId).first<CatRow>();
+  const c = await env.DB.prepare(`SELECT id, track, week_start, week_count, week_due_dow, milestone_due, milestone_weight FROM categories WHERE id = ?`).bind(categoryId).first<CatRow>();
   if (!c) notFound("카테고리를 찾을 수 없습니다");
   return c;
 }
@@ -104,12 +107,14 @@ export function milestonesFor(env: Env, cat: CatRow): MilestoneInfo[] {
   const reports = reportsOf(cat.track);
   const cfg = weekCfgOf(cat);
   const over = parseMilestoneDue(cat.milestone_due);
+  const wOver = parseMilestoneDue(cat.milestone_weight) as unknown as Record<string, number>;
   const now = nowIso();
   return reports.map((r) => {
     const due = over[r.id] || (cfg ? weekRange(cfg, r.week).end : null);
     const due_at = due ? endOfDayIso(due, env.APP_TZ) : null;
     const rubric = rubricOf(cat.track, r.id);
-    return { ...r, rubric, max_total: rubricMax(rubric), due, due_at, overridden: !!over[r.id], passed: !!due_at && due_at < now };
+    const wo = typeof wOver[r.id] === "number";
+    return { ...r, rubric, max_total: rubricMax(rubric), weight: wo ? wOver[r.id] : r.weight ?? 0, weight_overridden: wo, due, due_at, overridden: !!over[r.id], passed: !!due_at && due_at < now };
   });
 }
 
@@ -424,4 +429,62 @@ export async function adminList(env: Env, categoryId: string) {
   const submissions = rs.results ?? [];
   const total_bytes = submissions.reduce((a, s) => a + (s.size || 0), 0);
   return { enabled: milestones.length > 0, milestones, store: env.FILES_R2 ? "r2" : env.FILES ? "kv" : "none", max_bytes: MAX_FILE_BYTES, submissions, total_bytes };
+}
+
+export interface CompositeRow {
+  id: string;
+  title: string;
+  owner_name: string;
+  /** 마일스톤별: 평가 수 · 평균(원점수) · 100점 환산 · 가중 반영 점수 */
+  cells: Record<string, { n: number; avg: number | null; scaled: number | null; weighted: number | null }>;
+  composite: number;       // 반영된 회차만 합산 (미평가 회차는 0)
+  counted: number;         // 평가가 있는 회차 수
+  rank: number;
+}
+
+/** 리드·관리자: 회차 가중치 종합 점수 = Σ (회차 평균 / 회차 만점 × 100) × 가중치. 미평가 회차는 0 으로 반영 */
+export async function compositeScores(env: Env, ctx: AuthContext, categoryId: string) {
+  const role = requireCategoryMember(ctx, categoryId);
+  if (!(ctx.isAdmin || role === "admin" || role === "lead")) forbidden("종합 점수는 리드·관리자만 볼 수 있습니다");
+  const cat = await loadCat(env, categoryId);
+  const milestones = milestonesFor(env, cat);
+  const [prs, evs] = await env.DB.batch([
+    env.DB.prepare(`SELECT p.id, p.title, u.name AS owner_name FROM projects p JOIN users u ON u.id = p.owner_id WHERE p.category_id = ? AND p.status IN ('active','paused') ORDER BY p.title`).bind(categoryId),
+    env.DB.prepare(`SELECT e.project_id, e.milestone, e.total FROM evaluations e JOIN projects p ON p.id = e.project_id WHERE p.category_id = ? AND e.milestone IS NOT NULL AND e.total IS NOT NULL`).bind(categoryId),
+  ]);
+  const ev = (evs.results ?? []) as { project_id: string; milestone: string; total: number }[];
+  const r1 = (n: number) => Math.round(n * 10) / 10;
+  const rows: CompositeRow[] = ((prs.results ?? []) as { id: string; title: string; owner_name: string }[]).map((p) => {
+    const cells: CompositeRow["cells"] = {};
+    let composite = 0, counted = 0;
+    for (const m of milestones) {
+      const t = ev.filter((e) => e.project_id === p.id && e.milestone === m.id).map((e) => e.total);
+      if (!t.length || !m.max_total) { cells[m.id] = { n: 0, avg: null, scaled: null, weighted: null }; continue; }
+      const avg = t.reduce((a, b) => a + b, 0) / t.length;
+      const scaled = (avg / m.max_total) * 100;
+      const weighted = (scaled * m.weight) / 100;
+      composite += weighted; counted += 1;
+      cells[m.id] = { n: t.length, avg: r1(avg), scaled: r1(scaled), weighted: r1(weighted) };
+    }
+    return { ...p, cells, composite: r1(composite), counted, rank: 0 };
+  });
+  const sorted = [...rows].sort((a, b) => b.composite - a.composite);
+  for (const r of rows) r.rank = 1 + sorted.filter((x) => x.composite > r.composite).length; // 동점은 같은 순위
+  return {
+    milestones: milestones.map((m) => ({ id: m.id, label: m.label, max_total: m.max_total, weight: m.weight, weight_overridden: m.weight_overridden })),
+    weight_sum: milestones.reduce((a, m) => a + m.weight, 0),
+    rows,
+    filename: `${cat.id}_composite.csv`,
+  };
+}
+
+export function compositeCsv(s: Awaited<ReturnType<typeof compositeScores>>): string {
+  const esc = (v: unknown) => { const t = String(v ?? ""); return /[",\n]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t; };
+  const L: string[] = [];
+  L.push(["순위", "프로젝트", "담당", ...s.milestones.flatMap((m) => [`${m.label} 평균(${m.max_total})`, `${m.label} 환산(100)`, `${m.label} 반영(${m.weight}%)`]), "종합(100)", "반영 회차"].map(esc).join(","));
+  for (const r of [...s.rows].sort((a, b) => a.rank - b.rank)) {
+    L.push([r.rank, r.title, r.owner_name, ...s.milestones.flatMap((m) => { const c = r.cells[m.id]; return [c.avg ?? "-", c.scaled ?? "-", c.weighted ?? "-"]; }), r.composite, `${r.counted}/${s.milestones.length}`].map(esc).join(","));
+  }
+  L.push("", esc(`종합 = Σ (회차 평균 ÷ 회차 만점 × 100) × 가중치. 가중치 ${s.milestones.map((m) => `${m.label} ${m.weight}%`).join(" · ")}. 평가가 없는 회차는 0점으로 반영.`));
+  return "﻿" + L.join("\n");
 }

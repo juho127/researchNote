@@ -95,6 +95,8 @@ export interface ReportDef {
   hint?: string;
   /** 이 마일스톤 전용 평가 기준 (모든 문항 필수). 없으면 트랙 루브릭 */
   rubric?: RubricAxis[];
+  /** 종합 점수 가중치 기본값(%) — 카테고리 milestone_weight 로 덮어쓸 수 있다 */
+  weight?: number;
 }
 
 export interface TrackDef {
@@ -146,17 +148,17 @@ export const TRACKS: Record<string, TrackDef> = {
     ],
     reports: [
       // 평가 기준: GBT 캡스톤 심사 문항(2025 구글폼 평가지와 동일). 문항당 10·7·4점 선택, 모든 문항 필수.
-      { id: "report1", label: "1차 보고서", week: 4, stage: "market", hint: "주제·시장·사업모델, 린 캔버스 v1", rubric: [
+      { id: "report1", label: "1차 보고서", week: 4, stage: "market", hint: "주제·시장·사업모델, 린 캔버스 v1", weight: 20, rubric: [
         { id: "topic_fit", label: "주제 적합성", max: 10, hint: "GBT학부 졸업 자격을 판단하기에 적합한 주제입니까?", choices: [{ score: 10, label: "우수" }, { score: 7, label: "중간" }, { score: 4, label: "미흡" }] },
         { id: "problem_goal", label: "문제·목표 제시", max: 10, hint: "해결하고자 하는 문제점을 분명히 제시하고 있으며, 과제의 달성 목표가 분명합니까?", choices: [{ score: 10, label: "우수" }, { score: 7, label: "중간" }, { score: 4, label: "미흡" }] },
         { id: "report_format", label: "보고서 작성기준", max: 10, hint: "보고서 작성기준을 잘 지키고 있습니까?", choices: [{ score: 10, label: "우수" }, { score: 7, label: "중간" }, { score: 4, label: "미흡" }] },
       ] },
-      { id: "report2", label: "2차 보고서(중간)", week: 8, stage: "feedback", hint: "MVP 배포·피드백 루프·회고", rubric: [
+      { id: "report2", label: "2차 보고서(중간)", week: 8, stage: "feedback", hint: "MVP 배포·피드백 루프·회고", weight: 30, rubric: [
         { id: "improvement", label: "1차 대비 개선도", max: 10, hint: "1차 평가와 비교해서 주제적합성, 문제점분석 및 목표제시, 보고서작성준수 측면에서 얼마나 개선되었습니까?", choices: [{ score: 10, label: "20% 이상 개선" }, { score: 7, label: "20% 이내 개선" }, { score: 4, label: "동일" }] },
         { id: "goal_process", label: "목표 도출 과정", max: 10, hint: "목표 도출 과정이 얼마나 체계적이고 합리적입니까?", choices: [{ score: 10, label: "우수" }, { score: 7, label: "중간" }, { score: 4, label: "미흡" }] },
         { id: "goal_plan", label: "목표 달성 방안", max: 10, hint: "목표 달성 방안이 얼마나 구체적이고 현실적입니까?", choices: [{ score: 10, label: "우수" }, { score: 7, label: "중간" }, { score: 4, label: "미흡" }] },
       ] },
-      { id: "final", label: "최종보고서", week: 12, stage: "business", hint: "A4 20쪽 이내, 지정 목차", rubric: [
+      { id: "final", label: "최종보고서", week: 12, stage: "business", hint: "A4 20쪽 이내, 지정 목차", weight: 50, rubric: [
         { id: "improvement", label: "2차 대비 개선도", max: 10, hint: "2차 평가와 비교해서 주제적합성, 문제점분석 및 목표제시, 보고서작성준수 측면에서 얼마나 개선되었습니까?", choices: [{ score: 10, label: "20% 이상 개선" }, { score: 7, label: "20% 이내 개선" }, { score: 4, label: "동일" }] },
         { id: "performance", label: "계획 대비 성과", max: 10, hint: "계획 대비 성과를 어느 정도 달성하였습니까?", choices: [{ score: 10, label: "우수" }, { score: 7, label: "중간" }, { score: 4, label: "미흡" }] },
         { id: "achievement", label: "실제 달성 수준", max: 10, hint: "목표 달성율 대비 실제 달성 수준", choices: [{ score: 10, label: "우수" }, { score: 7, label: "중간" }, { score: 4, label: "미흡" }] },

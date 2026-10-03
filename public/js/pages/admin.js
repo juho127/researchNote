@@ -2,6 +2,7 @@ import { state, get, post, patch, put, del, h, mount, pill, avatar, stages, stag
 import { shortDate } from "../week.js";
 import { ApiError } from "../core.js";
 import { feedList } from "./home.js";
+import { compositeSection } from "./evaluate.js";
 
 export async function render(container, sub, query) {
   const tab = sub || "overview";
@@ -443,5 +444,6 @@ async function reports(body, query) {
     h("div.row", { style: { gap: "10px", flexWrap: "wrap" } }, sel, h("span.spacer"), h("span.small.muted", `저장소 ${files.store.toUpperCase()} · 파일 ${files.submissions.length}개 · ${mb(files.total_bytes)}`)),
     head,
     status.projects.length ? h("div.table-wrap", h("table.table.rep-grid", thead, tbody)) : h("div.empty", "진행 중인 프로젝트가 없습니다"),
+    status.projects.length ? await compositeSection(cid, { editable: true, onSaved: refresh }) : null,
     h("p.tiny.muted", { style: { marginTop: "8px" } }, "이메일 등으로 받은 보고서는 여기서 팀별로 대신 올립니다. 올린 파일은 평가자가 프로젝트 → [보고서] 탭에서 보고 채점하고, [일괄 공개] 로 팀에게 익명 공개됩니다. 공개된 평가·피드백을 프로젝트 기록으로 정리하는 일은 AI 도구(MCP list_evaluations → log_progress)로 합니다."));
 }

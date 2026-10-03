@@ -163,3 +163,4 @@ me = S.get(f"{BASE}/api/me").json()
 pid = me["my_projects"][0]["id"]
 S.post(f"{BASE}/api/projects/{pid}/entries", json={"title": "실험 3 완료", "content": "## 결과\n- F1 0.83", "stage": "experiment"})
 ```
+| GET | `/api/categories/:id/evaluations/composite[?format=csv]` | 리드·관리자: 회차 가중치 종합 점수 `{milestones[{id,label,max_total,weight,weight_overridden}], weight_sum, rows[{id,title,owner_name,cells{mid:{n,avg,scaled,weighted}},composite,counted,rank}]}`. 가중치는 PATCH /api/admin/categories/:id `{milestone_weight: {mid: %}}` (합계 100, "" 이면 기본값) |

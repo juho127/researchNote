@@ -150,3 +150,39 @@ async function evalForm(container, cid, pid, query) {
     h("div.eval-actions", h("div", "합계 ", totalEl), h("span.spacer"), saveBtn, nextBtn));
   recalc();
 }
+
+/** 리드·관리자: 회차 가중치 종합 점수 카드. editable 이면 가중치 편집(관리자) */
+export async function compositeSection(cid, { editable = false, onSaved } = {}) {
+  const { patch, downloadFile } = await import("../core.js");
+  const s = await get(`/api/categories/${enc(cid)}/evaluations/composite`);
+  const ms = s.milestones;
+  const weightLine = h("span.small.muted", `가중치 ${ms.map((m) => `${m.label} ${m.weight}%`).join(" · ")}${ms.some((m) => m.weight_overridden) ? " (변경됨)" : " (기본)"}`);
+  const editBox = h("div", { style: { display: "none", marginTop: "10px" } });
+  if (editable) {
+    const ins = ms.map((m) => ({ m, el: h("input.input", { type: "number", min: 0, max: 100, step: 5, value: m.weight, style: { width: "80px" } }) }));
+    const sumEl = h("b");
+    const recalc = () => { const sum = ins.reduce((a, i) => a + (Number(i.el.value) || 0), 0); sumEl.textContent = `합계 ${sum}%`; sumEl.style.color = Math.abs(sum - 100) < 0.01 ? "var(--ok)" : "var(--bad)"; };
+    ins.forEach((i) => i.el.addEventListener("input", recalc)); recalc();
+    const save = async (body) => { try { await patch(`/api/admin/categories/${enc(cid)}`, body); toast("가중치를 저장했습니다"); onSaved?.(); } catch (e) { errToast(e); } };
+    mount(editBox, h("div.row", { style: { gap: "12px", flexWrap: "wrap", alignItems: "flex-end" } },
+      ins.map((i) => h("label.field", { style: { margin: 0 } }, h("span", `${i.m.label} (%)`), i.el)), sumEl,
+      h("button.btn.sm.primary", { onclick: () => save({ milestone_weight: Object.fromEntries(ins.map((i) => [i.m.id, Number(i.el.value) || 0])) }) }, "저장"),
+      h("button.btn.sm", { onclick: () => save({ milestone_weight: "" }) }, "기본값으로")));
+  }
+  const rows = [...s.rows].sort((a, b) => a.rank - b.rank);
+  const fmt = (v) => (v === null || v === undefined ? "—" : v);
+  const table = h("table.table.rep-grid",
+    h("thead", h("tr", h("th", "순위"), h("th", "프로젝트"), ...ms.map((m) => h("th", `${m.label}`, h("div.tiny.muted", `평균/${m.max_total} → 100점 × ${m.weight}%`))), h("th", "종합 (100)"))),
+    h("tbody", rows.map((r) => h("tr",
+      h("td", h("b", String(r.rank))),
+      h("td", r.title, h("div.tiny.muted", r.owner_name)),
+      ...ms.map((m) => { const c = r.cells[m.id]; return h("td", c.n ? [h("div", `${fmt(c.avg)} → ${fmt(c.scaled)}`), h("div.tiny.muted", `반영 ${fmt(c.weighted)} · 평가 ${c.n}건`)] : h("span.tiny.muted", "평가 없음")); }),
+      h("td", h("b", String(r.composite)), h("div.tiny.muted", `반영 ${r.counted}/${ms.length}회차`))))));
+  return h("div.card", { style: { marginTop: "16px" } },
+    h("div.row", { style: { gap: "10px", flexWrap: "wrap" } }, h("b", "종합 점수 (회차 가중치)"), weightLine, h("span.spacer"),
+      editable ? h("button.btn.xs", { onclick: () => (editBox.style.display = editBox.style.display === "none" ? "" : "none") }, "가중치 설정") : null,
+      h("button.btn.xs", { onclick: () => downloadFile(`/api/categories/${enc(cid)}/evaluations/composite?format=csv`, s.filename) }, "종합 점수 CSV")),
+    editBox,
+    h("p.tiny.muted", { style: { margin: "6px 0 8px" } }, "회차 점수 = 평가자 전원의 합계 평균(초안 포함). 종합 = Σ (회차 평균 ÷ 회차 만점 × 100) × 가중치. 아직 평가가 없는 회차는 0점으로 반영되므로 학기 중에는 반영된 회차까지의 누적 점수입니다."),
+    h("div.table-wrap", table));
+}
