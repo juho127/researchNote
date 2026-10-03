@@ -10,8 +10,23 @@ export function manageableTargets(me, extraCategory) {
   return out;
 }
 
-/** 공지 한 건 카드. expanded=false 면 제목만 보이고 클릭해서 펼친다 */
+// 본 공지 기록 (브라우저별, 사용자별): {공지id: updated_at}. 펼쳐서 본 공지는 다음부터 접힌 채로 보인다. 수정되면 다시 새 공지.
+const seenKey = () => `rn.noticeSeen.${state.me?.user?.id || state.me?.viewer?.category_id || "anon"}`;
+function seenMap() { try { return JSON.parse(localStorage.getItem(seenKey()) || "{}") || {}; } catch { return {}; } }
+export function isNoticeSeen(n) { return seenMap()[n.id] === n.updated_at; }
+function markNoticeSeen(n) {
+  try {
+    const m = seenMap();
+    if (m[n.id] === n.updated_at) return;
+    m[n.id] = n.updated_at;
+    const ids = Object.keys(m); if (ids.length > 300) for (const k of ids.slice(0, ids.length - 300)) delete m[k];
+    localStorage.setItem(seenKey(), JSON.stringify(m));
+  } catch { /* 저장 불가(사생활 보호 모드 등)면 매번 펼쳐 보인다 */ }
+}
+
+/** 공지 한 건 카드. expanded=false 면 제목만 보이고 클릭해서 펼친다. 펼쳐진 공지는 '본 공지'로 기록 */
 export function noticeCard(n, { expanded = false, onChanged } = {}) {
+  const fresh = !isNoticeSeen(n);
   const body = h("div.notice-body", { hidden: !expanded }, mdEl(n.content || "_(본문 없음)_"));
   const toggle = h("button.notice-toggle", { type: "button", "aria-expanded": String(expanded) }, expanded ? "접기" : "펼치기");
   const card = h("div.card.notice" + (n.pinned ? ".pinned" : "") + (n.archived_at ? ".archived" : ""),
@@ -21,6 +36,7 @@ export function noticeCard(n, { expanded = false, onChanged } = {}) {
           n.pinned ? pill("고정", "gold sm") : null,
           pill(n.category_name || "전체 공지", n.category_name ? "sm" : "navy sm"),
           n.archived_at ? pill("내림", "mute sm") : null,
+          fresh && !n.archived_at ? pill("새 공지", "ok sm") : null,
           h("b.notice-title", { onclick: () => toggle.click(), style: { cursor: "pointer" } }, n.title),
         ),
         h("div.tiny.muted", { style: { marginTop: "3px" } }, h("span.row", { style: { gap: "5px", display: "inline-flex" } }, avatar(n.author_name), n.author_name), ` · ${fmtDT(n.created_at)}`, n.updated_at !== n.created_at ? ` · 수정 ${fmtRel(n.updated_at)}` : ""),
@@ -32,14 +48,16 @@ export function noticeCard(n, { expanded = false, onChanged } = {}) {
     ),
     body,
   );
-  toggle.addEventListener("click", () => { const open = body.hidden; body.hidden = !open; toggle.textContent = open ? "접기" : "펼치기"; toggle.setAttribute("aria-expanded", String(open)); });
+  toggle.addEventListener("click", () => { const open = body.hidden; body.hidden = !open; toggle.textContent = open ? "접기" : "펼치기"; toggle.setAttribute("aria-expanded", String(open)); if (open) markNoticeSeen(n); });
+  if (expanded) markNoticeSeen(n);
   return card;
 }
 
-/** 공지 목록 (고정 먼저). 없으면 안내 */
+/** 공지 목록 (고정 먼저). 이미 본 공지는 접어 두고, 아직 안 본 고정 공지(고정이 없으면 최신 1건)만 펼친다 */
 export function noticeList(rows, { expandPinned = true, onChanged, emptyText = "공지가 없습니다" } = {}) {
   if (!rows.length) return h("div.empty", emptyText);
-  return h("div.stack", rows.map((n, i) => noticeCard(n, { expanded: expandPinned ? !!n.pinned || (i === 0 && !rows.some((x) => x.pinned)) : false, onChanged })));
+  const hasPinned = rows.some((x) => x.pinned);
+  return h("div.stack", rows.map((n, i) => noticeCard(n, { expanded: expandPinned && !isNoticeSeen(n) && (!!n.pinned || (i === 0 && !hasPinned)), onChanged })));
 }
 
 /** 작성/수정 다이얼로그. notice 가 있으면 수정 */
@@ -94,7 +112,7 @@ export async function homeNoticeCard(me, { limit = 6 } = {}) {
   const wrap = h("div.card.notice-wrap");
   const refresh = async () => { rows = await get(`/api/notices?limit=${limit}`); draw(); };
   const draw = () => mount(wrap,
-    h("div.section-h", h("h2", "공지"), h("p.sub", rows.length ? `${rows.length}건` : "새 공지 없음"), h("span.spacer"),
+    h("div.section-h", h("h2", "공지"), h("p.sub", rows.length ? `${rows.length}건${rows.filter((n) => !isNoticeSeen(n)).length ? ` · 새 공지 ${rows.filter((n) => !isNoticeSeen(n)).length}` : ""}` : "새 공지 없음"), h("span.spacer"),
       canPost ? h("button.btn.sm", { onclick: () => noticeDialog({ onSaved: refresh }) }, "+ 공지 올리기") : null),
     noticeList(rows, { onChanged: refresh, emptyText: "아직 공지가 없습니다. [+ 공지 올리기]로 첫 공지를 남기세요." }),
   );
