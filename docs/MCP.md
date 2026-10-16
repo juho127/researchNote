@@ -84,9 +84,12 @@ http_headers = { Authorization = "Bearer rn_xxx" }
 | `get_project` | `project_id` | 메타·단계별 정리·할 일·최근 기록 (마크다운) |
 | `create_project` | `category_id, title, summary?, stage?, target_venue?, deadline?, tags?` | 새 논문 (명시적 요청 시만) |
 | `update_project` | `project_id, title?, summary?, stage?, status?, target_venue?, deadline?, tags?` | 메타 수정 |
-| **`log_progress`** | `project_id, title, content, stage?, date?, request_review?` | **날짜별 기록 추가** (source=mcp) |
+| **`log_progress`** | `project_id, title, content, stage?, date?, request_review?, weekly?, images?` | **날짜별 기록 추가** (source=mcp). `images: [{filename, content_base64, content_type?, caption?}]` 로 그림을 함께 첨부 — 본문의 `![설명](image:파일명)` 자리에 치환, 자리가 없으면 끝에 `## 그림` 절 |
+| **`upload_image`** | `entry_id, filename, content_base64, content_type?, caption?` | 기록에 그림 첨부 (PNG/JPEG/WebP/GIF/SVG, ≤ 5 MB, 기록당 20장) → `{id, url: /files/<id>, markdown, placeholder_replaced}`. 본문에 플레이스홀더가 없으면 돌려받은 `markdown` 을 `update_entry` 로 넣는다. 큰 파일은 REST `curl -F file=@…` 권장 |
+| `list_attachments` | `entry_id` | 첨부 그림 목록 (id·파일명·크기·마크다운) |
+| `delete_attachment` | `attachment_id` | 첨부 삭제 (올린 사람·리드·관리자). 본문 참조도 제거 |
 | `list_entries` | `project_id?, category_id?, since?, until?, stage?, q?, review_status?, limit?, full?` | 기록 조회 |
-| `get_entry` | `entry_id` | 본문 + 코멘트 |
+| `get_entry` | `entry_id` | 본문 + 코멘트 + 첨부 그림 목록 |
 | `update_entry` | `entry_id, title?, content?, stage?, date?` | 내 기록 수정 |
 | **`update_stage`** | `project_id, stage, summary` | **단계 누적 정리 갱신** (덮어쓰기 → 먼저 읽고 병합). 상태는 흐름에서 자동 |
 | `advance_stage` | `project_id, to?` | 현재 단계 완료 → 다음 단계 (마지막이면 논문 완료). `to` 로 특정 단계 이동·되돌리기 |
@@ -106,6 +109,18 @@ http_headers = { Authorization = "Bearer rn_xxx" }
 | `get_report` | `project_id, from?, to?, format?` | 보고서 마크다운 |
 
 응답은 사람이 읽기 좋은 텍스트(`content[0].text`) + 구조화 데이터(`structuredContent`). 권한/검증 오류는 `isError: true` 로 반환되어 AI 가 사용자에게 설명할 수 있습니다.
+
+### 그림 첨부 흐름
+
+```
+log_progress(content에 "![t-SNE](image:01_tsne.png)", images=[{filename:"01_tsne.png", content_base64:"…"}])   # 한 번에
+# 또는
+log_progress(…) → entry_id → upload_image(entry_id, "02_loss.png", base64) → markdown → update_entry(content에 삽입)
+# 큰 파일
+curl -F file=@02_loss.png -F caption=학습곡선 -H "Authorization: Bearer rn_xxx" https://<URL>/api/entries/<entry_id>/attachments
+```
+
+웹은 `/files/<id>` 를 토큰으로 받아 그림을 표시하고, HTML 보고서(PDF)는 7일짜리 서명 URL 을 넣는다.
 
 ## 프롬프트 · 리소스
 

@@ -1,6 +1,6 @@
 import type { Env } from "./env";
 import { CORS_HEADERS, json, text } from "./lib/http";
-import { handleApi } from "./routes";
+import { handleApi, handleFile } from "./routes";
 import { handleMcp } from "./mcp";
 import { SKILL_MD } from "./skill";
 import { connectMarkdown } from "./connect";
@@ -17,6 +17,11 @@ export default {
     if (path === "/api" || path.startsWith("/api/")) return handleApi(request, env);
 
     if (path === "/mcp" || path.startsWith("/mcp/")) return handleMcp(request, env);
+
+    // 기록 첨부 이미지 (토큰 또는 서명 URL)
+    const fm = /^\/files\/(att_[a-z0-9]+)\/?$/.exec(path);
+    if (fm) return handleFile(request, env, fm[1], url);
+    if (path === "/files" || path.startsWith("/files/")) return json({ error: "not_found", message: "첨부 경로는 /files/<att_…> 형식입니다" }, 404);
 
     if (path === "/SKILL.md" || path === "/skill" || path === "/skill.md") return text(SKILL_MD, 200, "text/markdown; charset=utf-8");
 

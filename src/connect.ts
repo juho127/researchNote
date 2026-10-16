@@ -106,6 +106,7 @@ MCP 서버가 \`initialize\` 응답으로 사용 원칙을 주므로 필수는 �
 - 누적 결론 변화: \`update_stage\` (읽고 병합 후 덮어쓰기) · 단계 진행: \`advance_stage\` · 다음 할 일: \`add_task\`
 - 팀: \`team_feed\`, \`team_overview\`, \`add_comment\`, \`set_review\` · 팀 찾기/가입: \`list_teams\`, \`join_team(category_id)\` · 보고서: \`get_report\`
 - 평가(마일스톤별, 평가자 여러 명): \`list_evaluations\` → 평가자는 \`add_evaluation\`(루브릭 점수+피드백), 팀은 \`respond_evaluation\`(답변)
+- 그림 첨부: 결과 그림(PNG·JPEG·WebP·GIF·SVG, ≤ 5 MB, 기록당 20장)은 \`log_progress\` 의 \`images\`(본문에 \`![설명](image:파일명.png)\` 자리 표시) 또는 \`upload_image(entry_id, filename, content_base64, caption)\` 로 올리고 응답의 \`markdown\`(\`![설명](/files/<id>)\`)을 본문에 넣는다. base64 는 작은 그림용이고, 큰 그림은 \`curl -F file=@그림.png -F caption=설명 -H "Authorization: Bearer <토큰>" ${base}/api/entries/<entry_id>/attachments\` 로. \`list_attachments\` / \`delete_attachment\` 로 정리
 - 트랙: 카테고리가 논문(paper) 또는 캡스톤(capstone) 트랙. 단계 id 는 \`get_project\` 의 "단계 순서"를 따른다. 캡스톤은 협업자(팀원)를 \`update_project.collaborators\` 로 지정
 - 전체 지침: \`${base}/SKILL.md\`
 `;

@@ -10,7 +10,7 @@
     "directory": "./public",
     "binding": "ASSETS",
     "not_found_handling": "single-page-application",
-    "run_worker_first": ["/api", "/api/*", "/mcp", "/mcp/*", "/health", "/SKILL.md", "/skill", "/skill.md", "/mcp.json", "/connect", "/connect.md", "/ai", "/llms.txt"]
+    "run_worker_first": ["/api", "/api/*", "/mcp", "/mcp/*", "/files/*", "/health", "/SKILL.md", "/skill", "/skill.md", "/mcp.json", "/connect", "/connect.md", "/ai", "/llms.txt"]
   },
   // SKILL.md 를 문자열 모듈로 임포트 (src/skill.ts)
   "rules": [{ "type": "Text", "globs": ["**/*.md"], "fallthrough": true }],
@@ -22,7 +22,8 @@
       "migrations_dir": "migrations"
     }
   ],
-  // 보고서 제출 PDF 저장소: R2 우선 (업로드 제한 20 MB). KV 는 R2 바인딩이 없을 때의 폴백
+  // 파일 저장소: 보고서 제출 PDF(≤ 20 MB) + 기록 이미지 첨부(≤ 5 MB, /files/:id). R2 우선, KV 는 R2 바인딩이 없을 때의 폴백
+  // 버킷이 없으면: npx wrangler r2 bucket create research-note-files
   "r2_buckets": [
     { "binding": "FILES_R2", "bucket_name": "research-note-files" }
   ],

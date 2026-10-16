@@ -1,9 +1,11 @@
 export interface Env {
   DB: D1Database;
   ASSETS: Fetcher;
-  /** 보고서 제출 파일 저장소: R2(FILES_R2) 를 우선 쓰고, 없으면 KV(FILES, 값당 25 MiB) */
+  /** 파일 저장소(보고서 제출 PDF · 기록 이미지 첨부): R2(FILES_R2) 를 우선 쓰고, 없으면 KV(FILES, 값당 25 MiB) */
   FILES_R2?: R2Bucket;
   FILES?: KVNamespace;
+  /** (선택) /files/:id 서명 URL 의 HMAC 키. 없으면 app_settings 에 첫 사용 시 자동 생성 */
+  FILES_SIGN_KEY?: string;
   APP_NAME: string;
   ORG_NAME: string;
   ORG_SUB: string;

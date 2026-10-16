@@ -14,7 +14,9 @@ import * as TM from "./services/teams";
 import * as EV from "./services/evaluations";
 import * as PV from "./services/publicview";
 import * as N from "./services/notices";
+import * as AT from "./services/attachments";
 import { logActivity } from "./lib/db";
+import { verifyFileSig } from "./lib/files";
 
 type Handler = (req: Request, env: Env, ctx: AuthContext, params: Record<string, string>, url: URL) => Promise<Response>;
 
@@ -164,6 +166,15 @@ add("DELETE", "/api/comments/:id", async (_r, env, ctx, p) => {
   await E.deleteComment(env, ctx, p.id);
   return json({ ok: true });
 });
+
+// ---------- 기록 이미지 첨부 (R2) ----------
+// 업로드: multipart/form-data (file, caption?, replace_placeholder?) 또는 JSON {filename, content_base64, content_type?, caption?}
+add("GET", "/api/entries/:id/attachments", async (_r, env, ctx, p) => json(await AT.list(env, ctx, p.id)));
+add("POST", "/api/entries/:id/attachments", async (req, env, ctx, p) => json(await AT.uploadFromRequest(env, ctx, p.id, req), 201));
+add("GET", "/api/attachments/:id/file", async (_r, env, ctx, p, url) => AT.fileResponse(env, ctx, p.id, q(url, "download") === "1"));
+// 서명 URL 발급 (열람 권한 확인 후). <img src> 처럼 헤더를 못 싣는 자리용 (7일)
+add("GET", "/api/attachments/:id/url", async (_r, env, ctx, p) => json(await AT.signedUrl(env, ctx, p.id)));
+add("DELETE", "/api/attachments/:id", async (_r, env, ctx, p) => json({ ok: true, ...(await AT.remove(env, ctx, p.id)) }));
 
 // ---------- 평가 (마일스톤별 평가자 채점·피드백 + 팀 답변) ----------
 add("GET", "/api/projects/:id/evaluations", async (_r, env, ctx, p) => json(await EV.listEvaluations(env, ctx, p.id)));
@@ -317,6 +328,27 @@ export async function handleApi(request: Request, env: Env): Promise<Response> {
   }
   if (matchedPath) return json({ error: "method_not_allowed", message: `${method} ${path} 는 지원하지 않습니다` }, 405);
   return notFoundResponse(path);
+}
+
+/**
+ * GET /files/:id — 기록 첨부 이미지. 인증은 둘 중 하나:
+ *   (1) Authorization: Bearer <토큰> (기록 열람 정책: 같은 카테고리 구성원·평가자·핀 열람 세션)
+ *   (2) 서명 URL ?exp=&sig= (보고서 HTML 등 헤더를 실을 수 없는 자리)
+ */
+export async function handleFile(request: Request, env: Env, id: string, url: URL): Promise<Response> {
+  const method = request.method.toUpperCase();
+  if (method !== "GET" && method !== "HEAD") return json({ error: "method_not_allowed", message: `${method} /files/:id 는 지원하지 않습니다` }, 405);
+  try {
+    const download = q(url, "download") === "1";
+    if (url.searchParams.has("sig")) {
+      if (!(await verifyFileSig(env, id, q(url, "exp") ?? null, q(url, "sig") ?? null))) throw new HttpError(401, "서명 URL 이 만료되었거나 올바르지 않습니다. 로그인한 상태에서 다시 열어 주세요", "unauthorized");
+      return await AT.fileResponse(env, null, id, download);
+    }
+    const ctx = await authenticate(request, env, request.headers.get("x-client") === "web" ? "web" : "api");
+    return await AT.fileResponse(env, ctx, id, download);
+  } catch (err) {
+    return errorResponse(err);
+  }
 }
 
 export function errorResponse(err: unknown): Response {

@@ -71,6 +71,12 @@
 | POST | `/api/entries/:id/review` | `{status: none|requested|changes_requested|approved, note}` — 승인/수정요청은 리드·관리자. note 는 코멘트로 저장 |
 | GET | `/api/entries/:id/comments` | 코멘트 목록 |
 | POST | `/api/entries/:id/comments` | `{content*, kind: comment|approve|request_changes}` → 201 (approve/request_changes 는 검토 상태도 변경) |
+| GET | `/api/entries/:id/attachments` | 기록의 첨부 그림 목록 `[{id, entry_id, filename, content_type, size, caption, uploader_name, created_at, url, markdown}]` |
+| POST | `/api/entries/:id/attachments` | 그림 첨부 → 201. **multipart/form-data** `file`(필수), `caption`, `filename`, `replace_placeholder`(기본 true) 또는 **JSON** `{filename*, content_base64*, content_type?, caption?, replace_placeholder?}`. PNG/JPEG/WebP/GIF/SVG, 5 MB(413 `too_large`), 기록당 20장. 권한: 기록 작성자·담당자·협업자·리드·관리자. 본문의 `![..](image:<filename>)` 플레이스홀더를 `/files/<id>` 로 치환(`placeholder_replaced`) |
+| GET | `/files/:id` | 그림 바이너리 (inline, `?download=1` 로 내려받기). 인증: Bearer 토큰(기록 열람 정책: 같은 카테고리 구성원·평가자·핀 열람 세션) 또는 서명 URL `?exp=&sig=` |
+| GET | `/api/attachments/:id/url` | 서명 URL 발급 `{url, expires_in}` (7일) — `<img src>` 처럼 헤더를 못 싣는 자리용 |
+| GET | `/api/attachments/:id/file` | `/files/:id` 와 같음 (API 경로) |
+| DELETE | `/api/attachments/:id` | 첨부 삭제 (올린 사람·리드·관리자). 본문의 참조 마크다운도 제거 |
 | DELETE | `/api/comments/:id` | 작성자·관리자 |
 
 기록 필드: `id, project_id, project_title, category_id, author_id, author_name, date, stage, title, content, source(web|mcp|api), review_status, comment_count, created_at, updated_at, can_edit`

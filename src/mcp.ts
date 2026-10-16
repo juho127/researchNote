@@ -23,6 +23,7 @@ import * as R from "./services/report";
 import * as TM from "./services/teams";
 import * as EV from "./services/evaluations";
 import * as N from "./services/notices";
+import * as AT from "./services/attachments";
 import { SKILL_MD, SKILL_SHORT } from "./skill";
 
 const SERVER_NAME = "research-note";
@@ -45,7 +46,7 @@ interface ToolDef {
 }
 
 /** 핀 열람 세션(읽기 전용)에서도 호출할 수 있는 도구. 나머지는 열람 모드에서 isError */
-const READONLY_TOOLS = new Set(["whoami", "list_projects", "get_project", "list_evaluations", "list_entries", "get_entry", "list_tasks", "team_feed", "team_overview", "list_teams", "search", "get_report", "list_notices"]);
+const READONLY_TOOLS = new Set(["whoami", "list_projects", "get_project", "list_evaluations", "list_entries", "get_entry", "list_attachments", "list_tasks", "team_feed", "team_overview", "list_teams", "search", "get_report", "list_notices"]);
 
 const stageEnum = {
   type: "string",
@@ -251,24 +252,93 @@ const TOOLS: ToolDef[] = [
     title: "연구 진행 기록 추가 (핵심)",
     description:
       "날짜별 연구 진행 기록을 남긴다. 실험을 돌리거나 문헌을 정리하거나 초고를 쓴 뒤 '무엇을 했고, 결과가 어땠고, 다음에 무엇을 할지'를 마크다운으로 기록한다. " +
-      "stage 는 그 작업이 속한 논문 단계(기획/리서치/관련기법/실험결과/논문작성/검토). date 생략 시 오늘. request_review=true 면 리드에게 검토 요청.",
+      "stage 는 그 작업이 속한 논문 단계(기획/리서치/관련기법/실험결과/논문작성/검토). date 생략 시 오늘. request_review=true 면 리드에게 검토 요청. " +
+      "그림(t-SNE·학습 곡선·히스토그램 등)은 images 로 함께 올릴 수 있다: 본문에 `![설명](image:파일명.png)` 을 써 두면 그 자리에 그림이 들어가고, 본문에 없는 그림은 끝에 `## 그림` 절로 붙는다. 기록을 만든 뒤 따로 올리려면 upload_image.",
     inputSchema: {
       type: "object",
       properties: {
         project_id: idProp("프로젝트 ID"),
         title: { type: "string", description: "한 줄 제목 (예: 'ResNet-50 baseline 실험 완료, acc 91.2%')" },
-        content: { type: "string", description: "마크다운 본문. 권장 구성: ## 한 일 / ## 결과 / ## 다음 할 일 / ## 메모(막힌 점·질문)" },
+        content: { type: "string", description: "마크다운 본문. 권장 구성: ## 한 일 / ## 결과 / ## 다음 할 일 / ## 메모(막힌 점·질문). 그림 자리는 ![설명](image:파일명.png)" },
         stage: stageEnum,
         date: dateProp("연구일"),
         request_review: { type: "boolean", description: "검토 요청 여부" },
         weekly: { type: "boolean", description: "주간 보고로 표시. 캡스톤은 카테고리 마감 요일(기본 토요일) 자정까지 주 1건. 제목 예: 3주차 주간 보고: 핵심 한 줄" },
+        images: {
+          type: "array",
+          maxItems: 20,
+          description: "함께 올릴 그림 (각 ≤ 5 MB, PNG/JPEG/WebP/GIF/SVG). base64 는 도구 인자로 전송되므로 작은 파일(수백 KB 이하)에 적합. 큰 파일은 REST `curl -F file=@…` 업로드를 권장 (research-note://guide 참고)",
+          items: {
+            type: "object",
+            properties: {
+              filename: { type: "string", description: "파일명 (본문의 image:<파일명> 플레이스홀더와 맞춘다)" },
+              content_base64: { type: "string", description: "파일 내용 base64 (data: 접두 허용)" },
+              content_type: { type: "string", description: "image/png 등. 생략 시 파일 내용·확장자로 판별" },
+              caption: { type: "string", description: "그림 설명 (마크다운 alt 텍스트)" },
+            },
+            required: ["filename", "content_base64"],
+          },
+        },
       },
       required: ["project_id", "title", "content"],
       additionalProperties: false,
     },
     handler: async (env, ctx, a) => {
-      const e = await E.createEntry(env, ctx, String(a.project_id), { title: a.title, content: a.content, stage: a.stage, date: a.date, review_status: a.request_review === true ? "requested" : undefined, weekly: a.weekly });
-      return { text: `기록됨: [${e.date}] ${e.title} (${e.id}) · ${STAGE_LABELS[e.stage]}${e.week ? ` · ${e.week}주차` : ""}${e.weekly ? " · 주간 보고" : ""}${e.review_status === "requested" ? " · 검토 요청됨" : ""}`, data: e };
+      let e = await E.createEntry(env, ctx, String(a.project_id), { title: a.title, content: a.content, stage: a.stage, date: a.date, review_status: a.request_review === true ? "requested" : undefined, weekly: a.weekly });
+      let imgLine = "";
+      if (Array.isArray(a.images) && a.images.length) {
+        const r = await AT.attachMany(env, ctx, e.id, a.images);
+        e = await E.getEntryFull(env, ctx, e.id);
+        imgLine = `\n그림 ${r.attachments.length}장 첨부됨${r.appended ? ` (본문에 자리가 없던 ${r.appended}장은 '## 그림' 절로 덧붙임)` : ""}:\n${r.attachments.map((x) => `- ${x.filename} → ${x.markdown}`).join("\n")}`;
+      }
+      return { text: `기록됨: [${e.date}] ${e.title} (${e.id}) · ${STAGE_LABELS[e.stage]}${e.week ? ` · ${e.week}주차` : ""}${e.weekly ? " · 주간 보고" : ""}${e.review_status === "requested" ? " · 검토 요청됨" : ""}${imgLine}`, data: e };
+    },
+  },
+  {
+    name: "upload_image",
+    title: "기록에 그림 첨부",
+    description:
+      "기록(entry)에 이미지 파일(PNG/JPEG/WebP/GIF/SVG, ≤ 5 MB, 기록당 20장)을 올리고 본문에 붙일 마크다운 스니펫 `![설명](/files/<id>)` 을 돌려준다. " +
+      "사용법: (1) log_progress 로 기록을 만들고 entry_id 를 받는다 → (2) 로컬 파일을 base64 로 읽어 upload_image → (3) 돌려받은 스니펫을 update_entry 의 content 에 넣는다 " +
+      "(기록 본문에 미리 `![설명](image:파일명.png)` 을 써 두었다면 같은 파일명으로 올리면 서버가 자동 치환하므로 update_entry 가 필요 없다). " +
+      "base64 는 도구 인자로 전송되므로 수백 KB 이하 그림에 적합하다. 큰 파일은 셸에서 `curl -F file=@그림.png -F caption=설명 -H 'Authorization: Bearer <토큰>' <BASE_URL>/api/entries/<entry_id>/attachments` 로 올리고 응답의 markdown 을 쓴다.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        entry_id: idProp("기록 ID (log_progress 응답의 id)"),
+        filename: { type: "string", description: "파일명 (예: 01_tsne.png). 본문의 image:<파일명> 플레이스홀더가 있으면 그 자리로 치환" },
+        content_base64: { type: "string", description: "파일 내용 base64 (data:image/png;base64, 접두 허용)" },
+        content_type: { type: "string", enum: ["image/png", "image/jpeg", "image/webp", "image/gif", "image/svg+xml"], description: "생략 시 파일 내용·확장자로 판별" },
+        caption: { type: "string", description: "그림 설명 (alt 텍스트·figure 캡션)" },
+      },
+      required: ["entry_id", "filename", "content_base64"],
+      additionalProperties: false,
+    },
+    handler: async (env, ctx, a) => {
+      const r = await AT.upload(env, ctx, String(a.entry_id), { filename: a.filename, content_type: a.content_type, bytes: AT.decodeBase64(a.content_base64), caption: a.caption });
+      const L = [`첨부됨: ${r.filename} (${r.id}, ${Math.round(r.size / 1024)} KB, ${r.content_type})`, `마크다운: ${r.markdown}`];
+      L.push(r.placeholder_replaced ? "본문의 image:" + r.filename + " 자리를 치환했습니다 (update_entry 불필요)." : "본문에 아직 참조가 없습니다. update_entry 로 위 마크다운을 원하는 위치(예: ## 결과 아래)에 넣으세요.");
+      return { text: L.join("\n"), data: r };
+    },
+  },
+  {
+    name: "list_attachments",
+    title: "기록의 첨부 그림 목록",
+    description: "기록에 첨부된 이미지 목록(id, 파일명, 크기, 마크다운 스니펫)을 본다.",
+    inputSchema: { type: "object", properties: { entry_id: idProp("기록 ID") }, required: ["entry_id"], additionalProperties: false },
+    handler: async (env, ctx, a) => {
+      const rows = await AT.list(env, ctx, String(a.entry_id));
+      return { text: rows.length ? rows.map((r) => `- ${r.filename} (${r.id}) · ${Math.round(r.size / 1024)} KB · ${r.uploader_name} · ${r.created_at.slice(0, 10)}${r.caption ? ` · ${r.caption}` : ""}\n  ${r.markdown}`).join("\n") : "첨부 없음", data: { attachments: rows } };
+    },
+  },
+  {
+    name: "delete_attachment",
+    title: "첨부 그림 삭제",
+    description: "첨부 이미지를 삭제한다 (올린 사람·리드·관리자). 본문의 `![..](/files/<id>)` 참조도 함께 지워진다.",
+    inputSchema: { type: "object", properties: { attachment_id: idProp("첨부 ID (att_…)") }, required: ["attachment_id"], additionalProperties: false },
+    handler: async (env, ctx, a) => {
+      const r = await AT.remove(env, ctx, String(a.attachment_id));
+      return { text: `삭제됨: ${r.id} (기록 ${r.entry_id})`, data: r };
     },
   },
   {
@@ -307,6 +377,8 @@ const TOOLS: ToolDef[] = [
     handler: async (env, ctx, a) => {
       const e = await E.getEntryFull(env, ctx, String(a.entry_id));
       const L = [`# ${e.title}`, `- ${e.date} · ${e.project_title} · ${STAGE_LABELS[e.stage]} · ${e.author_name} · 검토: ${e.review_status}`, "", e.content];
+      const atts = await AT.list(env, ctx, e.id);
+      if (atts.length) L.push("", `## 첨부 그림 (${atts.length})`, ...atts.map((x) => `- ${x.filename} (${x.id}) · ${Math.round(x.size / 1024)} KB${x.caption ? ` · ${x.caption}` : ""}`));
       if (e.comments?.length) {
         L.push("", "## 코멘트");
         for (const c of e.comments) L.push(`- **${c.author_name}** (${c.kind}, ${c.created_at.slice(0, 16)}): ${c.content}`);

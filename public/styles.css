@@ -202,7 +202,24 @@ textarea.input.mono{font-family:var(--mono);font-size:13px}
 .md table{border-collapse:collapse;margin:8px 0;font-size:13px}.md th,.md td{border:1px solid var(--rule);padding:4px 9px}.md th{background:var(--wash)}
 .md blockquote{border-left:3px solid var(--mint);margin:8px 0;padding:2px 12px;color:#3C4E57;background:#F8FBFB}
 .md hr{margin:12px 0}
-.md img{max-width:100%}
+.md img{max-width:100%;height:auto}
+/* 첨부 그림: figure + 캡션, 클릭 시 원본 */
+.md figure.att{margin:10px 0;text-align:center}
+.md figure.att img,.md img.att{max-width:100%;max-height:520px;border:1px solid var(--rule);border-radius:9px;background:#fff;cursor:zoom-in}
+.md figure.att figcaption{font-size:12.5px;color:var(--muted);margin-top:5px}
+.md img.att.loading{min-width:120px;min-height:80px;background:var(--wash) repeating-linear-gradient(45deg,transparent 0 10px,rgba(255,255,255,.6) 10px 20px);cursor:progress}
+.md img.att.broken{min-width:120px;min-height:40px;padding:8px 12px;font-size:12px;color:var(--brick);background:#FDECE7;cursor:default;display:inline-block}
+.md img.att.broken::after{content:attr(alt)}
+/* 기록 편집기의 첨부 */
+.att-bar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:12.5px;color:var(--muted)}
+.att-chips{display:flex;gap:6px;flex-wrap:wrap}
+.att-chip{display:inline-flex;gap:6px;align-items:center;font-size:12px;border:1px solid var(--rule);border-radius:999px;padding:3px 6px 3px 10px;background:var(--wash);max-width:260px}
+.att-chip .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.att-chip .tiny{white-space:nowrap}
+.att-chip.pending{border-style:dashed}
+.att-chip button{border:0;background:transparent;cursor:pointer;color:var(--muted);font-size:14px;line-height:1;padding:0 3px}
+.att-chip button:hover{color:var(--brick)}
+textarea.input.drop{outline:2px dashed var(--mint);outline-offset:-2px;background:#F3FAFA}
 
 /* ---------- 단계 정리 ---------- */
 .stage-card{display:flex;flex-direction:column;gap:8px}
