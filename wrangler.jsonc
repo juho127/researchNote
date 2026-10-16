@@ -43,7 +43,9 @@
     // 토큰 재발급(/#/reissue): "true" 면 등록한 이름+이메일이 일치할 때 즉시 발급, "false" 면 관리자 승인 후 수령
     "REISSUE_AUTO": "true",
     // 핀 열람 세션 만료일 (YYYY-MM-DD, APP_TZ 기준 그날 자정까지). 비우거나 지난 날짜면 24시간 세션
-    "VIEWER_SESSION_UNTIL": "2026-12-31"
+    "VIEWER_SESSION_UNTIL": "2026-12-31",
+    // 기록 이미지 첨부: 계정(업로더)당 합계 한도(MB). 계정별 조정은 관리자 API 의 attachment_quota_mb
+    "ATTACHMENT_QUOTA_MB": "10"
   },
   "observability": { "enabled": true }
   // 비밀값(소스에 두지 않음):

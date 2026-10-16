@@ -65,7 +65,7 @@ description: 연구노트(Research Note) 플랫폼에 논문 진행 상황을 �
 
 ### 그림 첨부 (t-SNE·학습 곡선·히스토그램 등)
 
-실험 결과 그림은 파일명만 적지 말고 **기록에 첨부해 본문에서 보이게** 한다. 허용 형식 PNG·JPEG·WebP·GIF·SVG, 파일당 5 MB, 기록당 20장.
+실험 결과 그림은 파일명만 적지 말고 **기록에 첨부해 본문에서 보이게** 한다. 허용 형식 PNG·JPEG·WebP·GIF·SVG, 파일당 5 MB, 기록당 20장, **계정당 첨부 합계 기본 10 MB** (업로드 응답과 `list_attachments` 에 현재 사용량/한도가 온다. 초과하면 413 `quota_exceeded` — 안 쓰는 첨부를 지우거나 그림을 줄여서(해상도·WebP) 올리고, 한도 상향은 관리자에게 요청한다).
 
 - **기록과 함께**: `log_progress` 의 `images: [{filename, content_base64, caption}]`. 본문에 `![설명](image:파일명.png)` 을 써 두면 그 자리에 들어가고, 자리가 없는 그림은 끝에 `## 그림` 절로 붙는다.
 - **기록을 만든 뒤**: `upload_image(entry_id, filename, content_base64, caption?)` → 응답의 `markdown`(`![설명](/files/<id>)`)을 `update_entry` 로 본문 적절한 위치(보통 `## 결과` 아래)에 넣는다. 본문에 `image:파일명` 플레이스홀더가 이미 있으면 서버가 자동 치환하므로 `update_entry` 는 필요 없다.

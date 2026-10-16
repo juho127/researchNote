@@ -250,6 +250,32 @@ const ts = Date.now().toString(36);
   ok("deleting entry removes its attachments", delEntry.status === 200 && afterDel.status === 404);
   const tooMany = await api(MEM, "POST", `/api/entries/${e1Id}/attachments`, { filename: "big.png", content_base64: "A".repeat(7 * 1024 * 1024) });
   ok("oversized base64 → 413", tooMany.status === 413, String(tooMany.status));
+  // 계정당 용량 쿼터 (기본 10 MB, 관리자가 계정별 조정)
+  ok("upload response carries account quota", attJson.data.quota?.limit_bytes === 10 * 1024 * 1024 && attJson.data.quota.used_bytes >= pngBytes.length && typeof attJson.data.quota.text === "string", JSON.stringify(attJson.data.quota));
+  const quotaUser = await api(ADMIN, "POST", "/api/admin/users", { name: `쿼터${ts}`, categories: [{ category_id: catId, role: "lead" }], issue_token: true });
+  const QT = quotaUser.data.token;
+  const setQuota = await api(ADMIN, "PATCH", `/api/admin/users/${quotaUser.data.user.id}`, { attachment_quota_mb: 100 / 1048576 }); // 100 bytes
+  ok("admin sets per-user quota", setQuota.status === 200 && setQuota.data.attachment_quota_bytes === 100, JSON.stringify(setQuota.data).slice(0, 160));
+  const q1 = await api(QT, "POST", `/api/entries/${e1Id}/attachments`, { filename: "q1.png", content_base64: PNG1 });
+  ok("first upload within quota", q1.status === 201 && q1.data.quota.limit_bytes === 100 && q1.data.quota.used_bytes === pngBytes.length && q1.data.quota.remaining_bytes === 100 - pngBytes.length, JSON.stringify(q1.data.quota));
+  const q2 = await api(QT, "POST", `/api/entries/${e1Id}/attachments`, { filename: "q2.png", content_base64: PNG1 });
+  ok("second upload exceeds quota → 413 quota_exceeded with usage", q2.status === 413 && q2.data.error === "quota_exceeded" && /사용 중/.test(q2.data.message) && /한도/.test(q2.data.message), JSON.stringify(q2.data));
+  const qMcpList = await mcp(QT, "tools/call", { name: "list_attachments", arguments: { entry_id: e1Id } });
+  ok("mcp list_attachments reports caller quota", qMcpList.data.result?.structuredContent?.quota?.limit_bytes === 100 && qMcpList.data.result.content[0].text.includes("내 계정 사용량"), JSON.stringify(qMcpList.data).slice(0, 300));
+  const qMcpUp = await mcp(QT, "tools/call", { name: "upload_image", arguments: { entry_id: e1Id, filename: "q3.png", content_base64: PNG1 } });
+  ok("mcp upload_image over quota → isError quota_exceeded", qMcpUp.data.result?.isError === true && qMcpUp.data.result.content[0].text.includes("quota_exceeded"));
+  const qDel = await api(QT, "DELETE", `/api/attachments/${q1.data.id}`);
+  const q4 = await api(QT, "POST", `/api/entries/${e1Id}/attachments`, { filename: "q4.png", content_base64: PNG1 });
+  ok("deleting frees quota", qDel.status === 200 && q4.status === 201 && q4.data.quota.used_bytes === pngBytes.length);
+  const badQuota = await api(ADMIN, "PATCH", `/api/admin/users/${quotaUser.data.user.id}`, { attachment_quota_mb: -1 });
+  ok("negative quota → 400", badQuota.status === 400);
+  const resetQuota = await api(ADMIN, "PATCH", `/api/admin/users/${quotaUser.data.user.id}`, { attachment_quota_mb: null });
+  const q5 = await api(QT, "POST", `/api/entries/${e1Id}/attachments`, { filename: "q5.png", content_base64: PNG1 });
+  ok("quota reset to default (null) → 10 MB again", resetQuota.data.attachment_quota_bytes === null && q5.status === 201 && q5.data.quota.limit_bytes === 10 * 1024 * 1024);
+  const adminUsers = await api(ADMIN, "GET", "/api/admin/users");
+  ok("admin users list shows attachment_bytes", adminUsers.data.find((u) => u.id === quotaUser.data.user.id)?.attachment_bytes === 2 * pngBytes.length);
+  await api(QT, "DELETE", `/api/attachments/${q4.data.id}`); await api(QT, "DELETE", `/api/attachments/${q5.data.id}`);
+  await api(ADMIN, "PATCH", `/api/admin/users/${quotaUser.data.user.id}`, { disabled: true });
 
   // 관리자 개요 / 토큰 회수
   const ov = await api(ADMIN, "GET", "/api/admin/overview");

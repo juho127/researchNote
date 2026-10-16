@@ -29,7 +29,7 @@ categories 1 ──< memberships >── 1 users 1 ──< tokens
 | `project_stages` | (`project_id`,`stage`) PK, `status` todo\|doing\|done, `summary`(md), `updated_by` | 프로젝트 생성 시 6행 생성 (`ensureStageRows`) |
 | `entries` | `project_id`, `author_id`, `date`(연구일), `stage`, `title`, `content`(md ≤200KB), `source` web\|mcp\|api, `review_status` none\|requested\|changes_requested\|approved | 날짜별 기록 |
 | `comments` | `entry_id`, `author_id`, `content`, `kind` comment\|approve\|request_changes | 승인/수정요청 코멘트는 entries.review_status 도 갱신 |
-| `attachments` | `entry_id`, `project_id`, `uploader_id`, `filename`, `content_type`, `size`, `r2_key`, `caption` | 기록 그림 첨부. 바이너리는 R2(`FILES_R2`, 없으면 KV) `att/<project>/<entry>/<id>.<ext>`. 본문은 `![..](/files/<id>)` 로 참조 |
+| `attachments` | `entry_id`, `project_id`, `uploader_id`, `filename`, `content_type`, `size`, `r2_key`, `caption` | 기록 그림 첨부. 계정당 용량 한도는 `uploader_id` 기준 `size` 합계로 계산(기본 10 MB, `users.attachment_quota_bytes` 로 계정별 조정). 바이너리는 R2(`FILES_R2`, 없으면 KV) `att/<project>/<entry>/<id>.<ext>`. 본문은 `![..](/files/<id>)` 로 참조 |
 | `app_settings` | `key` PK, `value` | 배포 단위 설정 (`files_sign_key`: /files 서명 URL HMAC 키, 첫 사용 시 자동 생성) |
 | `tasks` | `project_id`, `title`, `status` todo\|doing\|done, `assignee_id`, `due`, `stage`, `done_at` | |
 | `activity` | `at`, `actor_id`, `category_id`, `project_id`, `action`, `target_id`, `summary`, `source` | 피드·관리자 로그·활동 추이 |

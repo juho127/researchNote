@@ -6,6 +6,8 @@ export interface Env {
   FILES?: KVNamespace;
   /** (선택) /files/:id 서명 URL 의 HMAC 키. 없으면 app_settings 에 첫 사용 시 자동 생성 */
   FILES_SIGN_KEY?: string;
+  /** (선택) 계정당 첨부 용량 기본 한도(MB). 기본 10. 계정별로는 users.attachment_quota_bytes 가 우선 */
+  ATTACHMENT_QUOTA_MB?: string;
   APP_NAME: string;
   ORG_NAME: string;
   ORG_SUB: string;

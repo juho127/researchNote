@@ -85,8 +85,8 @@ http_headers = { Authorization = "Bearer rn_xxx" }
 | `create_project` | `category_id, title, summary?, stage?, target_venue?, deadline?, tags?` | 새 논문 (명시적 요청 시만) |
 | `update_project` | `project_id, title?, summary?, stage?, status?, target_venue?, deadline?, tags?` | 메타 수정 |
 | **`log_progress`** | `project_id, title, content, stage?, date?, request_review?, weekly?, images?` | **날짜별 기록 추가** (source=mcp). `images: [{filename, content_base64, content_type?, caption?}]` 로 그림을 함께 첨부 — 본문의 `![설명](image:파일명)` 자리에 치환, 자리가 없으면 끝에 `## 그림` 절 |
-| **`upload_image`** | `entry_id, filename, content_base64, content_type?, caption?` | 기록에 그림 첨부 (PNG/JPEG/WebP/GIF/SVG, ≤ 5 MB, 기록당 20장) → `{id, url: /files/<id>, markdown, placeholder_replaced}`. 본문에 플레이스홀더가 없으면 돌려받은 `markdown` 을 `update_entry` 로 넣는다. 큰 파일은 REST `curl -F file=@…` 권장 |
-| `list_attachments` | `entry_id` | 첨부 그림 목록 (id·파일명·크기·마크다운) |
+| **`upload_image`** | `entry_id, filename, content_base64, content_type?, caption?` | 기록에 그림 첨부 (PNG/JPEG/WebP/GIF/SVG, 파일당 ≤ 5 MB, 기록당 20장, **계정당 합계 기본 10 MB**) → `{id, url: /files/<id>, markdown, placeholder_replaced, quota: {used_bytes, limit_bytes, remaining_bytes, text}}`. 한도 초과 시 `quota_exceeded`(현재 사용량/한도 포함). 본문에 플레이스홀더가 없으면 돌려받은 `markdown` 을 `update_entry` 로 넣는다. 큰 파일은 REST `curl -F file=@…` 권장 |
+| `list_attachments` | `entry_id` | 첨부 그림 목록 (id·파일명·크기·마크다운) + 이 기록 합계(`entry_bytes`) + 내 계정 사용량/한도(`quota`) |
 | `delete_attachment` | `attachment_id` | 첨부 삭제 (올린 사람·리드·관리자). 본문 참조도 제거 |
 | `list_entries` | `project_id?, category_id?, since?, until?, stage?, q?, review_status?, limit?, full?` | 기록 조회 |
 | `get_entry` | `entry_id` | 본문 + 코멘트 + 첨부 그림 목록 |
@@ -121,6 +121,8 @@ curl -F file=@02_loss.png -F caption=학습곡선 -H "Authorization: Bearer rn_x
 ```
 
 웹은 `/files/<id>` 를 토큰으로 받아 그림을 표시하고, HTML 보고서(PDF)는 7일짜리 서명 URL 을 넣는다.
+
+**용량 한도**: 파일당 5 MB, 기록당 20장, 계정(업로더)당 첨부 합계 기본 10 MB. 한도는 `src/services/attachments.ts` 의 `MAX_IMAGE_BYTES` / `MAX_PER_ENTRY` / `DEFAULT_ACCOUNT_QUOTA_BYTES` 한 곳에 있고, 배포 기본값은 `wrangler.jsonc` 의 `ATTACHMENT_QUOTA_MB`, 계정별 조정은 관리자가 `PATCH /api/admin/users/:id {attachment_quota_mb}` 로. 초과하면 413 과 함께 "현재 사용량 / 한도" 메시지가 오므로 안 쓰는 첨부를 `delete_attachment` 로 지우거나 그림을 줄여 올린다.
 
 ## 프롬프트 · 리소스
 

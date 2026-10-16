@@ -249,6 +249,9 @@ export interface UserRow extends User {
   project_count?: number;
   entry_count?: number;
   last_entry_at?: string | null;
+  /** 첨부 사용량(bytes) · 계정별 한도(bytes, NULL 이면 기본 10 MB) */
+  attachment_bytes?: number;
+  attachment_quota_bytes?: number | null;
 }
 
 export async function listUsers(env: Env, includeDisabled = true): Promise<UserRow[]> {
@@ -259,7 +262,8 @@ export async function listUsers(env: Env, includeDisabled = true): Promise<UserR
          (SELECT COUNT(*) FROM tokens t WHERE t.user_id = u.id AND t.revoked_at IS NULL) AS active_tokens,
          (SELECT COUNT(*) FROM projects p WHERE p.owner_id = u.id AND p.status IN ('active','paused')) AS project_count,
          (SELECT COUNT(*) FROM entries e WHERE e.author_id = u.id) AS entry_count,
-         (SELECT MAX(e.created_at) FROM entries e WHERE e.author_id = u.id) AS last_entry_at
+         (SELECT MAX(e.created_at) FROM entries e WHERE e.author_id = u.id) AS last_entry_at,
+         (SELECT COALESCE(SUM(a.size), 0) FROM attachments a WHERE a.uploader_id = u.id) AS attachment_bytes
        FROM users u ${includeDisabled ? "" : "WHERE u.disabled_at IS NULL"} ORDER BY u.disabled_at IS NOT NULL, u.role = 'admin' DESC, u.name`
     )
     .all<UserRow>();
@@ -285,6 +289,8 @@ export interface UserInput {
   id?: unknown;
   categories?: unknown; // [{category_id, role}] 또는 ["cat_id", ...]
   issue_token?: unknown; // true 면 생성과 동시에 토큰 발급
+  /** 계정당 첨부 용량 한도(MB). null 이면 기본값(10 MB)으로 되돌림 */
+  attachment_quota_mb?: unknown;
 }
 
 function normMemberships(v: unknown): { category_id: string; role: "lead" | "member" | "evaluator" }[] {
@@ -368,6 +374,19 @@ export async function updateUser(env: Env, ctx: AuthContext, id: string, input: 
     if (id === ctx.user.id && off) bad("자기 자신을 비활성화할 수 없습니다");
     sets.push("disabled_at = ?");
     params.push(off ? nowIso() : null);
+  }
+  if (input.attachment_quota_mb !== undefined) {
+    // 첨부 용량 한도: 양수 MB, null/""/0 이면 기본값으로
+    const v = input.attachment_quota_mb;
+    if (v === null || v === "" || v === 0) {
+      sets.push("attachment_quota_bytes = ?");
+      params.push(null);
+    } else {
+      const mb = Number(v);
+      if (!Number.isFinite(mb) || mb <= 0 || mb > 100_000) bad("attachment_quota_mb 는 0 보다 큰 숫자(MB)여야 합니다 (비우면 기본 10 MB)");
+      sets.push("attachment_quota_bytes = ?");
+      params.push(Math.round(mb * 1048576));
+    }
   }
   if (sets.length) {
     params.push(id);

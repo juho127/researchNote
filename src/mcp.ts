@@ -267,7 +267,7 @@ const TOOLS: ToolDef[] = [
         images: {
           type: "array",
           maxItems: 20,
-          description: "함께 올릴 그림 (각 ≤ 5 MB, PNG/JPEG/WebP/GIF/SVG). base64 는 도구 인자로 전송되므로 작은 파일(수백 KB 이하)에 적합. 큰 파일은 REST `curl -F file=@…` 업로드를 권장 (research-note://guide 참고)",
+          description: "함께 올릴 그림 (각 ≤ 5 MB, 계정당 합계 기본 10 MB, PNG/JPEG/WebP/GIF/SVG). base64 는 도구 인자로 전송되므로 작은 파일(수백 KB 이하)에 적합. 큰 파일은 REST `curl -F file=@…` 업로드를 권장 (research-note://guide 참고)",
           items: {
             type: "object",
             properties: {
@@ -289,7 +289,8 @@ const TOOLS: ToolDef[] = [
       if (Array.isArray(a.images) && a.images.length) {
         const r = await AT.attachMany(env, ctx, e.id, a.images);
         e = await E.getEntryFull(env, ctx, e.id);
-        imgLine = `\n그림 ${r.attachments.length}장 첨부됨${r.appended ? ` (본문에 자리가 없던 ${r.appended}장은 '## 그림' 절로 덧붙임)` : ""}:\n${r.attachments.map((x) => `- ${x.filename} → ${x.markdown}`).join("\n")}`;
+        const last = r.attachments[r.attachments.length - 1];
+        imgLine = `\n그림 ${r.attachments.length}장 첨부됨${r.appended ? ` (본문에 자리가 없던 ${r.appended}장은 '## 그림' 절로 덧붙임)` : ""}:\n${r.attachments.map((x) => `- ${x.filename} → ${x.markdown}`).join("\n")}${last ? `\n계정 첨부 사용량: ${last.quota.text}` : ""}`;
       }
       return { text: `기록됨: [${e.date}] ${e.title} (${e.id}) · ${STAGE_LABELS[e.stage]}${e.week ? ` · ${e.week}주차` : ""}${e.weekly ? " · 주간 보고" : ""}${e.review_status === "requested" ? " · 검토 요청됨" : ""}${imgLine}`, data: e };
     },
@@ -298,7 +299,7 @@ const TOOLS: ToolDef[] = [
     name: "upload_image",
     title: "기록에 그림 첨부",
     description:
-      "기록(entry)에 이미지 파일(PNG/JPEG/WebP/GIF/SVG, ≤ 5 MB, 기록당 20장)을 올리고 본문에 붙일 마크다운 스니펫 `![설명](/files/<id>)` 을 돌려준다. " +
+      "기록(entry)에 이미지 파일(PNG/JPEG/WebP/GIF/SVG, 파일당 ≤ 5 MB, 기록당 20장, 계정당 첨부 합계 기본 10 MB)을 올리고 본문에 붙일 마크다운 스니펫 `![설명](/files/<id>)` 을 돌려준다. 응답에 계정 사용량/한도(quota)가 함께 온다. 한도를 넘으면 413 quota_exceeded — 안 쓰는 첨부를 지우거나 그림을 줄여 올린다. " +
       "사용법: (1) log_progress 로 기록을 만들고 entry_id 를 받는다 → (2) 로컬 파일을 base64 로 읽어 upload_image → (3) 돌려받은 스니펫을 update_entry 의 content 에 넣는다 " +
       "(기록 본문에 미리 `![설명](image:파일명.png)` 을 써 두었다면 같은 파일명으로 올리면 서버가 자동 치환하므로 update_entry 가 필요 없다). " +
       "base64 는 도구 인자로 전송되므로 수백 KB 이하 그림에 적합하다. 큰 파일은 셸에서 `curl -F file=@그림.png -F caption=설명 -H 'Authorization: Bearer <토큰>' <BASE_URL>/api/entries/<entry_id>/attachments` 로 올리고 응답의 markdown 을 쓴다.",
@@ -318,17 +319,21 @@ const TOOLS: ToolDef[] = [
       const r = await AT.upload(env, ctx, String(a.entry_id), { filename: a.filename, content_type: a.content_type, bytes: AT.decodeBase64(a.content_base64), caption: a.caption });
       const L = [`첨부됨: ${r.filename} (${r.id}, ${Math.round(r.size / 1024)} KB, ${r.content_type})`, `마크다운: ${r.markdown}`];
       L.push(r.placeholder_replaced ? "본문의 image:" + r.filename + " 자리를 치환했습니다 (update_entry 불필요)." : "본문에 아직 참조가 없습니다. update_entry 로 위 마크다운을 원하는 위치(예: ## 결과 아래)에 넣으세요.");
+      L.push(`계정 첨부 사용량: ${r.quota.text} (남은 용량 ${AT.fmtMB(r.quota.remaining_bytes)})`);
       return { text: L.join("\n"), data: r };
     },
   },
   {
     name: "list_attachments",
     title: "기록의 첨부 그림 목록",
-    description: "기록에 첨부된 이미지 목록(id, 파일명, 크기, 마크다운 스니펫)을 본다.",
+    description: "기록에 첨부된 이미지 목록(id, 파일명, 크기, 마크다운 스니펫)과 내 계정의 첨부 사용량/한도(기본 10 MB)를 본다.",
     inputSchema: { type: "object", properties: { entry_id: idProp("기록 ID") }, required: ["entry_id"], additionalProperties: false },
     handler: async (env, ctx, a) => {
-      const rows = await AT.list(env, ctx, String(a.entry_id));
-      return { text: rows.length ? rows.map((r) => `- ${r.filename} (${r.id}) · ${Math.round(r.size / 1024)} KB · ${r.uploader_name} · ${r.created_at.slice(0, 10)}${r.caption ? ` · ${r.caption}` : ""}\n  ${r.markdown}`).join("\n") : "첨부 없음", data: { attachments: rows } };
+      const d = await AT.listWithQuota(env, ctx, String(a.entry_id));
+      const rows = d.attachments;
+      const L = rows.length ? rows.map((r) => `- ${r.filename} (${r.id}) · ${Math.round(r.size / 1024)} KB · ${r.uploader_name} · ${r.created_at.slice(0, 10)}${r.caption ? ` · ${r.caption}` : ""}\n  ${r.markdown}`) : ["첨부 없음"];
+      L.push(`이 기록 첨부 합계 ${AT.fmtMB(d.entry_bytes)} · 내 계정 사용량 ${d.quota.text} (남은 용량 ${AT.fmtMB(d.quota.remaining_bytes)})`);
+      return { text: L.join("\n"), data: d };
     },
   },
   {

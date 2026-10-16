@@ -2,6 +2,7 @@
  * 기록(entry) 이미지 첨부 — 이미지 본문은 R2(FILES_R2, 없으면 KV) 에, 메타는 D1 attachments 에 둔다.
  *
  * - 업로드: 기록 작성자 또는 프로젝트 편집 권한자(담당자·협업자·리드·관리자). PNG/JPEG/WebP/GIF/SVG, 파일당 5 MB, 기록당 20장.
+ * - 쿼터: 계정(업로더)당 첨부 합계 기본 10 MB (users.attachment_quota_bytes 로 계정별 조정). 초과 시 413 quota_exceeded + 현재 사용량/한도.
  * - 본문 참조: `![설명](/files/<id>)`. 업로드 응답에 바로 붙일 수 있는 마크다운 스니펫을 함께 준다.
  * - 플레이스홀더: 본문에 `![설명](image:<파일명>)` 을 먼저 써 두고 그 파일명으로 업로드하면 서버가 /files/<id> 로 바꿔 준다
  *   (기록을 만든 뒤에야 entry_id 가 생기므로, 새 기록 + 그림을 한 번에 올릴 때 쓴다).
@@ -70,6 +71,36 @@ async function canAttach(env: Env, ctx: AuthContext, e: EntryRow, p: ProjectRow)
   return p.owner_id === ctx.user.id || (await isCollaborator(env, p.id, ctx.user.id));
 }
 
+// ---------- 계정당 용량 쿼터 ----------
+/** 기본 한도: 계정(업로더)당 첨부 합계 10 MB. 관리자가 users.attachment_quota_bytes 로 계정별 조정, 배포 기본값은 ATTACHMENT_QUOTA_MB 변수로 */
+export const DEFAULT_ACCOUNT_QUOTA_BYTES = 10 * 1024 * 1024;
+
+export interface QuotaInfo {
+  used_bytes: number;
+  limit_bytes: number;
+  remaining_bytes: number;
+  /** 사람이 읽는 요약 (예: 3.2 MB / 10 MB) */
+  text: string;
+}
+export const fmtMB = (n: number) => `${(n / 1048576).toFixed(n >= 1048576 * 10 ? 0 : 1)} MB`;
+
+function defaultQuota(env: Env): number {
+  const mb = Number(env.ATTACHMENT_QUOTA_MB);
+  return Number.isFinite(mb) && mb > 0 ? Math.round(mb * 1048576) : DEFAULT_ACCOUNT_QUOTA_BYTES;
+}
+
+/** 사용자의 첨부 사용량(uploader_id 기준 size 합계)과 한도 */
+export async function quotaOf(env: Env, userId: string): Promise<QuotaInfo> {
+  const [u, s] = await env.DB.batch([
+    env.DB.prepare(`SELECT attachment_quota_bytes AS q FROM users WHERE id = ?`).bind(userId),
+    env.DB.prepare(`SELECT COALESCE(SUM(size), 0) AS used FROM attachments WHERE uploader_id = ?`).bind(userId),
+  ]);
+  const q = (u.results?.[0] as { q: number | null } | undefined)?.q;
+  const limit_bytes = typeof q === "number" && q > 0 ? q : defaultQuota(env);
+  const used_bytes = Number((s.results?.[0] as { used: number } | undefined)?.used ?? 0);
+  return { used_bytes, limit_bytes, remaining_bytes: Math.max(0, limit_bytes - used_bytes), text: `${fmtMB(used_bytes)} / ${fmtMB(limit_bytes)}` };
+}
+
 /** 파일 앞부분으로 실제 형식을 확인한다. 선언된 content_type/확장자와 내용이 다르면 400 */
 function detectType(bytes: Uint8Array, declared: string, filename: string): string {
   const b = bytes;
@@ -119,6 +150,8 @@ export interface UploadInput {
 export interface UploadResult extends AttachmentRow {
   /** 본문의 플레이스홀더가 치환되었는지 */
   placeholder_replaced: boolean;
+  /** 업로드 후 이 계정의 사용량/한도 */
+  quota: QuotaInfo;
 }
 
 export async function upload(env: Env, ctx: AuthContext, entryId: string, input: UploadInput): Promise<UploadResult> {
@@ -128,7 +161,11 @@ export async function upload(env: Env, ctx: AuthContext, entryId: string, input:
   if (p.status === "archived") forbidden("보관된 프로젝트의 기록에는 첨부할 수 없습니다");
   const size = input.bytes.byteLength;
   if (size <= 0) bad("빈 파일입니다");
-  if (size > MAX_IMAGE_BYTES) throw new HttpError(413, `이미지가 너무 큽니다 (${(size / 1024 / 1024).toFixed(1)} MB, 최대 ${MAX_IMAGE_BYTES / 1024 / 1024} MB). 해상도를 줄이거나 PNG→WebP/JPEG 로 바꿔 올리세요`, "too_large");
+  if (size > MAX_IMAGE_BYTES) throw new HttpError(413, `이미지가 너무 큽니다 (${fmtMB(size)}, 파일당 최대 ${fmtMB(MAX_IMAGE_BYTES)}). 해상도를 줄이거나 PNG→WebP/JPEG 로 바꿔 올리세요`, "too_large");
+  const quota = await quotaOf(env, ctx.user.id);
+  if (quota.used_bytes + size > quota.limit_bytes) {
+    throw new HttpError(413, `계정 첨부 용량 한도를 넘습니다: 현재 ${quota.text} 사용 중, 이 파일 ${fmtMB(size)} (남은 용량 ${fmtMB(quota.remaining_bytes)}). 안 쓰는 첨부를 지우거나(delete_attachment) 그림을 줄여 올리세요. 한도 상향은 관리자에게`, "quota_exceeded");
+  }
   const cnt = await env.DB.prepare(`SELECT COUNT(*) AS n FROM attachments WHERE entry_id = ?`).bind(entryId).first<{ n: number }>();
   if ((cnt?.n ?? 0) >= MAX_PER_ENTRY) bad(`기록당 이미지는 최대 ${MAX_PER_ENTRY}장입니다`);
   const declared = str(input.content_type, 100).toLowerCase().split(";")[0].trim();
@@ -155,7 +192,7 @@ export async function upload(env: Env, ctx: AuthContext, entryId: string, input:
   }
   await touchProject(env, p.id);
   await logActivity(env, { actor_id: ctx.user.id, category_id: p.category_id, project_id: p.id, action: "attachment.create", target_id: id, summary: `${e.title}: ${filename} (${Math.round(size / 1024)} KB)`, source: ctx.source });
-  return { ...shape(await getRaw(env, id)), placeholder_replaced };
+  return { ...shape(await getRaw(env, id)), placeholder_replaced, quota: await quotaOf(env, ctx.user.id) };
 }
 
 /** base64 (data: 접두 허용) → ArrayBuffer */
@@ -231,6 +268,12 @@ export async function list(env: Env, ctx: AuthContext, entryId: string): Promise
   if (!categoryRole(ctx, p.category_id)) forbidden("이 기록이 속한 카테고리의 구성원이 아닙니다");
   const rs = await env.DB.prepare(`${SELECT} WHERE a.entry_id = ? ORDER BY a.created_at`).bind(entryId).all<Raw>();
   return (rs.results ?? []).map(shape);
+}
+
+/** 첨부 목록 + 호출자 계정의 사용량/한도 (MCP list_attachments 용) */
+export async function listWithQuota(env: Env, ctx: AuthContext, entryId: string): Promise<{ attachments: AttachmentRow[]; entry_bytes: number; quota: QuotaInfo }> {
+  const attachments = await list(env, ctx, entryId);
+  return { attachments, entry_bytes: attachments.reduce((a, x) => a + x.size, 0), quota: await quotaOf(env, ctx.user.id) };
 }
 
 /**
