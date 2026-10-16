@@ -63,6 +63,19 @@ description: 연구노트(Research Note) 플랫폼에 논문 진행 상황을 �
 5. "다음 할 일" 항목은 `add_task` 로 등록한다. 이미 있는 할 일이 끝났으면 `update_task status=done`.
 6. 사용자가 검토를 원하면 `log_progress` 에 `request_review: true` 또는 `set_review`.
 
+### 그림 첨부 (t-SNE·학습 곡선·히스토그램 등)
+
+실험 결과 그림은 파일명만 적지 말고 **기록에 첨부해 본문에서 보이게** 한다. 허용 형식 PNG·JPEG·WebP·GIF·SVG, 파일당 5 MB, 기록당 20장, **계정당 첨부 합계 기본 10 MB** (업로드 응답과 `list_attachments` 에 현재 사용량/한도가 온다. 초과하면 413 `quota_exceeded` — 안 쓰는 첨부를 지우거나 그림을 줄여서(해상도·WebP) 올리고, 한도 상향은 관리자에게 요청한다).
+
+- **기록과 함께**: `log_progress` 의 `images: [{filename, content_base64, caption}]`. 본문에 `![설명](image:파일명.png)` 을 써 두면 그 자리에 들어가고, 자리가 없는 그림은 끝에 `## 그림` 절로 붙는다.
+- **기록을 만든 뒤**: `upload_image(entry_id, filename, content_base64, caption?)` → 응답의 `markdown`(`![설명](/files/<id>)`)을 `update_entry` 로 본문 적절한 위치(보통 `## 결과` 아래)에 넣는다. 본문에 `image:파일명` 플레이스홀더가 이미 있으면 서버가 자동 치환하므로 `update_entry` 는 필요 없다.
+- base64 는 도구 인자(토큰)로 전송되므로 **수백 KB 이하**의 그림에 적합하다. 큰 그림은 먼저 줄이거나(예: 1200px 폭, WebP), 셸에서 REST 로 올린다:
+  ```bash
+  curl -s -F "file=@results/01_tsne.png" -F "caption=t-SNE 비교" -H "Authorization: Bearer $RESEARCH_NOTE_TOKEN" $RESEARCH_NOTE_URL/api/entries/<entry_id>/attachments
+  # → {"id":"att_…","url":"/files/att_…","markdown":"![t-SNE 비교](/files/att_…)", ...}
+  ```
+- 확인·정리: `list_attachments(entry_id)`, `delete_attachment(attachment_id)`(본문 참조도 함께 삭제). 그림은 같은 팀 구성원·핀 열람자가 웹과 보고서(PDF)에서 본다.
+
 ## 조회·검토
 
 - 팀 찾기·가입: `list_teams`(전체 팀·가입 정책·내 상태) → 사용자가 원하면 `join_team(category_id=<list_teams 결과의 id>, message?)`(즉시 가입 또는 리드 승인 요청). 팀 = 카테고리이며 인자 이름은 `category_id` 다(`team_id` 아님). 한 사람이 여러 팀에 속할 수 있다.

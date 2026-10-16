@@ -20,7 +20,7 @@ Cursor / Codex ───┘     ├─ /            SPA (정적)
 | **리드(카테고리 책임자)** | 팀원 기록 승인/수정요청, 팀원 프로젝트에 기록·할 일 추가, 담당자 변경 |
 | **관리자(연구책임자)** | 카테고리·연구원·토큰 관리, 전체 대시보드(단계 분포·활동 추이·정체 연구원·검토 대기·마감) |
 | **평가자** | 카테고리 역할(여러 명). 마일스톤별 루브릭 채점·피드백, 초안/공개, 팀 답변 확인 |
-| **AI 도구** | MCP 도구 26종으로 whoami → get_project → log_progress → update_stage 자동 기록, 팀 피드 조회, 보고서 초안 |
+| **AI 도구** | MCP 도구 30여 종으로 whoami → get_project → log_progress → update_stage 자동 기록, 결과 그림 첨부(upload_image), 팀 피드 조회, 보고서 초안 |
 
 ### 논문 흐름대로 기록한다
 
@@ -103,7 +103,9 @@ npm run setup               # D1 생성 → 마이그레이션 → 배포 → �
    - **보고서**: 기간 지정 → HTML(새 탭, 인쇄/PDF 저장 버튼) 또는 Markdown 다운로드
 4. **설정**: 내 정보, AI 도구 연동 명령(토큰 자동 삽입, 기본 가림), 로그아웃
 
-기록 본문은 마크다운이며 표·코드·체크박스·링크를 지원합니다. 권장 구조: `## 한 일 / ## 결과 / ## 다음 할 일 / ## 메모`.
+기록 본문은 마크다운이며 표·코드·체크박스·링크·그림을 지원합니다. 권장 구조: `## 한 일 / ## 결과 / ## 다음 할 일 / ## 메모`.
+
+**그림 첨부**: 기록 편집 창의 [🖼 이미지 첨부] 버튼, 본문에 끌어다 놓기, 붙여넣기(스크린숏)로 PNG·JPEG·WebP·GIF·SVG(파일당 5 MB, 기록당 20장, 계정당 합계 10 MB — 관리자가 계정별 조정 가능)를 올리면 커서 위치에 `![설명](/files/<id>)` 가 들어갑니다. 그림은 R2 에 저장되고 같은 팀 구성원·핀 열람자만 볼 수 있으며, HTML/PDF 보고서에도 실립니다. AI 도구는 `log_progress` 의 `images` 또는 `upload_image` 로 올립니다.
 
 ## AI 도구 연동 (웹 MCP)
 
@@ -125,6 +127,7 @@ claude mcp add --transport http research-note https://<배포URL>/mcp --header "
 - "실험 단계 정리를 지금 결과로 갱신해" → `update_stage`
 - "팀원들 이번 주 뭐 했는지 보여줘" → `team_feed`
 - "이 프로젝트 주간 보고서 초안 만들어" → `get_report`
+- "results/ 폴더의 t-SNE 그림을 오늘 기록에 붙여" → `upload_image` → `update_entry` (또는 `log_progress` 의 `images`)
 
 서버가 `initialize` 응답의 `instructions` 로 사용 원칙을 전달하므로 스킬 없이도 동작합니다. 더 정교한 절차와 `/research-note:log` 같은 슬래시 커맨드가 필요하면 **플러그인**을 설치하세요 (`integrations/claude-code/research-note`):
 
@@ -145,7 +148,7 @@ Cursor · Claude Desktop(mcp-remote) · Codex CLI · Gemini CLI 설정 예시는
 
 ### MCP 도구 목록
 
-`whoami` `list_projects` `get_project` `create_project` `update_project`(협업자 포함) `log_progress` `list_entries` `get_entry` `update_entry` `update_stage` `advance_stage` `list_tasks` `add_task` `update_task` `add_comment` `set_review` `list_evaluations` `add_evaluation` `respond_evaluation` `list_notices` `post_notice` `team_feed` `team_overview` `list_teams` `join_team` `search` `get_report` + 프롬프트 `log_today` `weekly_review` `research_note_guide` + 리소스 `research-note://guide`, `research-note://me`, `research-note://project/{id}`
+`whoami` `list_projects` `get_project` `create_project` `update_project`(협업자 포함) `log_progress`(images 포함) `upload_image` `list_attachments` `delete_attachment` `list_entries` `get_entry` `update_entry` `update_stage` `advance_stage` `list_tasks` `add_task` `update_task` `add_comment` `set_review` `list_evaluations` `add_evaluation` `respond_evaluation` `list_notices` `post_notice` `team_feed` `team_overview` `list_teams` `join_team` `search` `get_report` + 프롬프트 `log_today` `weekly_review` `research_note_guide` + 리소스 `research-note://guide`, `research-note://me`, `research-note://project/{id}`
 
 ## 보고서
 
@@ -229,8 +232,8 @@ src/
   mcp.ts            MCP 서버 (JSON-RPC, tools/prompts/resources)
   skill.ts          AI 지침 (SKILL.md 임포트)
   env.ts            타입·단계 정의
-  lib/              auth(토큰), db, http, markdown, id, time
-  services/         projects, entries(코멘트·검토), tasks, admin, feed, report
+  lib/              auth(토큰), db, http, markdown, files(R2/KV 저장소·서명 URL), id, time
+  services/         projects, entries(코멘트·검토), attachments(그림 첨부), submissions(보고서 PDF), tasks, admin, feed, report
 public/             SPA (빌드 없음, ES 모듈)
   js/core.js        API 클라이언트·DOM·마크다운·모달
   js/pages/         login, home, team, project, admin, settings
@@ -247,7 +250,7 @@ docs/               API · MCP · 데이터 모델 · 관리자/연구원 가이
 
 - **비용?** Cloudflare 무료 플랜: Workers 10만 요청/일, D1 5GB·500만 행 읽기/일. 연구실 규모에서는 무료.
 - **PDF 는?** HTML 보고서의 [인쇄 / PDF 저장] → 브라우저 인쇄 대화상자에서 PDF 로 저장. 서버 측 PDF 렌더링(Browser Rendering)은 유료라 채택하지 않았습니다.
-- **첨부파일?** 링크(마크다운)로 붙입니다. R2 업로드는 로드맵.
+- **첨부파일?** 그림(PNG·JPEG·WebP·GIF·SVG, 파일당 5 MB, 계정당 합계 10 MB)은 기록에 직접 첨부됩니다 (R2 저장, `/files/<id>`). 한도 기본값은 `wrangler.jsonc` 의 `ATTACHMENT_QUOTA_MB`, 계정별 상향은 관리자 API(`attachment_quota_mb`). 그 밖의 파일은 링크(마크다운)로 붙이고, 캡스톤 보고서 PDF 는 [보고서] 탭에서 제출합니다.
 - **토큰을 잃어버리면?** 관리자가 [토큰] 탭에서 회수 후 재발급.
 - **여러 연구실이 하나의 배포를 공유?** 카테고리로 분리됩니다. 관리자만 전체를 봅니다.
 

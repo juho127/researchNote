@@ -1,5 +1,5 @@
 import { DOW, weekOf, weekRange, shortDate } from "../week.js";
-import { state, getToken, api, get, post, patch, put, del, h, mount, clear, pill, avatar, stages, stageLabel, stageHint, stageMilestone, stageIndex, stageSelect, track as trackDef, ROLE_LABEL, fmtRel, fmtDT, weekday, today, daysAgo, input, textarea, field, select, modal, confirmDialog, toast, errToast, mdEl, openReport, downloadFile, openFileTab, projectProgress, STATUS_LABEL, STAGE_STATUS_LABEL, REVIEW_LABEL, REVIEW_CLASS } from "../core.js";
+import { state, getToken, api, get, post, patch, put, del, h, mount, clear, pill, avatar, stages, stageLabel, stageHint, stageMilestone, stageIndex, stageSelect, track as trackDef, ROLE_LABEL, fmtRel, fmtDT, weekday, today, daysAgo, input, textarea, field, select, modal, confirmDialog, toast, errToast, mdEl, uploadFile, forgetImage, openReport, downloadFile, openFileTab, projectProgress, STATUS_LABEL, STAGE_STATUS_LABEL, REVIEW_LABEL, REVIEW_CLASS } from "../core.js";
 
 let current = null; // { project, tab, filters }
 
@@ -275,23 +275,101 @@ export function entryEditor(p, e, container, opts = {}) {
   const review = h("input", { type: "checkbox", checked: e?.review_status === "requested" });
   const preview = h("div.md", { style: { display: "none", minHeight: "200px", border: "1px solid var(--rule)", borderRadius: "9px", padding: "10px 12px", background: "#fff" } });
   const seg = h("div.seg", h("button.active", { onclick: (ev) => { swap(ev.target, false); } }, "편집"), h("button", { onclick: (ev) => { swap(ev.target, true); } }, "미리보기"));
-  function swap(btn, showPreview) { seg.querySelectorAll("button").forEach((b) => b.classList.remove("active")); btn.classList.add("active"); if (showPreview) { preview.innerHTML = mdEl(content.value).innerHTML; preview.style.display = ""; content.style.display = "none"; } else { preview.style.display = "none"; content.style.display = ""; } }
+  // 미리보기: 아직 업로드 전인 그림(image:<파일명>)은 로컬 blob URL 로 보여준다
+  const previewSrc = () => { let v = content.value; for (const f of pending) v = v.split(`](image:${f.name})`).join(`](${f.url})`); return v; };
+  function swap(btn, showPreview) { seg.querySelectorAll("button").forEach((b) => b.classList.remove("active")); btn.classList.add("active"); if (showPreview) { preview.replaceChildren(...mdEl(previewSrc()).childNodes); preview.style.display = ""; content.style.display = "none"; } else { preview.style.display = "none"; content.style.display = ""; } }
   content.addEventListener("keydown", (ev) => { if (ev.key === "Tab") { ev.preventDefault(); const s = content.selectionStart; content.setRangeText("  ", s, content.selectionEnd, "end"); } });
+
+  // ---- 이미지 첨부: 기존 기록은 바로 업로드해 /files/<id> 를 삽입, 새 기록은 플레이스홀더(image:<파일명>)를 넣고 저장 뒤 업로드 ----
+  const MAX_IMG = 5 * 1024 * 1024, MAX_PER = 20;
+  const pending = []; // { file, name, url } (새 기록)
+  let existing = [];  // 서버에 있는 첨부 (기존 기록)
+  const chips = h("div.att-chips");
+  const fileInput = h("input", { type: "file", accept: "image/png,image/jpeg,image/webp,image/gif,image/svg+xml,.png,.jpg,.jpeg,.webp,.gif,.svg", multiple: true, style: { display: "none" }, onchange: () => { addFiles([...fileInput.files]); fileInput.value = ""; } });
+  const attBtn = h("button.btn.xs", { type: "button", onclick: () => fileInput.click() }, "🖼 이미지 첨부");
+  const attBar = h("div.att-bar", attBtn, fileInput, h("span.tiny.muted", "PNG·JPEG·WebP·GIF·SVG · 5 MB · 기록당 20장 · 본문에 끌어다 놓거나 붙여넣어도 됩니다"), chips);
+  const kb = (n) => (n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`);
+  const baseName = (n) => n.replace(/\.[a-z0-9]+$/i, "");
+  const escRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const stripRef = (text, url) => text.replace(new RegExp(`!\\[[^\\]]*\\]\\(${escRe(url)}[^)]*\\)\\n?`, "g"), "");
+  function insertAtCursor(text) {
+    const s = content.selectionStart ?? content.value.length, en = content.selectionEnd ?? s;
+    const before = content.value.slice(0, s), after = content.value.slice(en);
+    const pre = before && !before.endsWith("\n") ? "\n" : "", post = after && !after.startsWith("\n") ? "\n" : "";
+    content.setRangeText(`${pre}${text}${post}`, s, en, "end");
+    content.focus();
+  }
+  function drawChips() {
+    mount(chips,
+      existing.map((a) => h("span.att-chip", { title: a.filename }, h("span.nm", a.filename), h("span.tiny.muted", kb(a.size)),
+        h("button", { type: "button", title: "삭제", onclick: async () => {
+          if (!(await confirmDialog(`${a.filename} 을(를) 삭제할까요? 본문의 참조도 지워집니다.`, { danger: true, okLabel: "삭제" }))) return;
+          try { await del(`/api/attachments/${a.id}`); existing = existing.filter((x) => x.id !== a.id); content.value = stripRef(content.value, a.url); forgetImage(a.url); drawChips(); toast("삭제했습니다"); } catch (ex) { errToast(ex); }
+        } }, "×"))),
+      pending.map((f) => h("span.att-chip.pending", { title: `${f.name} (저장 시 업로드)` }, h("span.nm", f.name), h("span.tiny.muted", kb(f.file.size)),
+        h("button", { type: "button", title: "제거", onclick: () => { pending.splice(pending.indexOf(f), 1); content.value = content.value.replace(new RegExp(`!\\[[^\\]]*\\]\\(image:${escRe(f.name)}\\)\\n?`, "g"), ""); URL.revokeObjectURL(f.url); drawChips(); } }, "×"))),
+    );
+  }
+  async function addFiles(files) {
+    const imgs = files.filter((f) => /^image\/(png|jpeg|webp|gif|svg\+xml)$/.test(f.type) || /\.(png|jpe?g|webp|gif|svg)$/i.test(f.name));
+    if (!imgs.length) { toast("이미지 파일(PNG·JPEG·WebP·GIF·SVG)만 첨부할 수 있습니다", true); return; }
+    for (const f of imgs) {
+      if (f.size > MAX_IMG) { toast(`${f.name}: 5 MB 를 넘습니다. 해상도를 줄이거나 WebP/JPEG 로 바꿔 주세요`, true); continue; }
+      if (existing.length + pending.length >= MAX_PER) { toast(`기록당 그림은 ${MAX_PER}장까지입니다`, true); break; }
+      let name = f.name.replace(/[\\/:*?"<>|]+/g, "_") || `image.${(f.type.split("/")[1] || "png").replace("jpeg", "jpg").replace("svg+xml", "svg")}`;
+      if (e) {
+        attBtn.disabled = true;
+        try {
+          const fd = new FormData(); fd.append("file", f); fd.append("filename", name); fd.append("caption", baseName(name)); fd.append("replace_placeholder", "false");
+          const a = await uploadFile(`/api/entries/${e.id}/attachments`, fd);
+          existing.push(a); insertAtCursor(a.markdown); toast(`${a.filename} 첨부됨 (${kb(a.size)})`);
+        } catch (ex) { errToast(ex); } finally { attBtn.disabled = false; }
+      } else {
+        if (pending.some((x) => x.name === name)) name = `${baseName(name)}-${pending.length + 1}${name.match(/\.[a-z0-9]+$/i)?.[0] || ""}`;
+        pending.push({ file: f, name, url: URL.createObjectURL(f) });
+        insertAtCursor(`![${baseName(name)}](image:${name})`);
+      }
+    }
+    drawChips();
+  }
+  content.addEventListener("dragover", (ev) => { if ([...(ev.dataTransfer?.types || [])].includes("Files")) { ev.preventDefault(); content.classList.add("drop"); } });
+  content.addEventListener("dragleave", () => content.classList.remove("drop"));
+  content.addEventListener("drop", (ev) => { const files = [...(ev.dataTransfer?.files || [])]; if (files.length) { ev.preventDefault(); content.classList.remove("drop"); addFiles(files); } });
+  content.addEventListener("paste", (ev) => {
+    const files = [...(ev.clipboardData?.files || [])].filter((f) => f.type.startsWith("image/"));
+    if (!files.length) return;
+    ev.preventDefault();
+    const ts = Date.now().toString(36);
+    addFiles(files.map((f, i) => (f.name && f.name !== "image.png" ? f : new File([f], `clipboard-${ts}${i ? "-" + i : ""}.${(f.type.split("/")[1] || "png").replace("jpeg", "jpg").replace("svg+xml", "svg")}`, { type: f.type }))));
+  });
+  if (e) get(`/api/entries/${e.id}/attachments`).then((rows) => { existing = rows; drawChips(); }).catch(() => {});
+
   modal({
     title: e ? "기록 수정" : "기록 추가",
     wide: true,
     body: h("div.stack",
       h("div.form-grid", field("연구일", date), field("단계", stage)),
       field("제목", title),
-      h("div.field", h("div.row.between", h("span", "내용 (마크다운)"), seg), content, preview, h("span.help", "표(| a | b |), 코드(```), 체크박스(- [ ]), 링크 지원. Tab 으로 들여쓰기.")),
+      h("div.field", h("div.row.between", h("span", "내용 (마크다운)"), seg), content, preview, attBar, h("span.help", "표(| a | b |), 코드(```), 체크박스(- [ ]), 링크, 그림(![설명](/files/…)) 지원. Tab 으로 들여쓰기.")),
       p.week_cfg ? h("label.check", weekly, "주간 보고로 표시", h("span.small.muted", ` — 매주 ${DOW[p.week_cfg.week_due_dow]}요일 자정까지 1건, 팀 페이지 [주차별] 탭에 ✓ 로 집계`)) : null,
       e ? null : h("label.check", review, "리드에게 검토 요청"),
     ),
+    onClose: () => { for (const f of pending) URL.revokeObjectURL(f.url); },
     actions: [{ label: "취소" }, { label: e ? "저장" : "기록 저장", cls: "primary", onClick: async () => {
       if (!title.value.trim()) { toast("제목을 입력하세요", true); return false; }
-      if (e) await patch(`/api/entries/${e.id}`, { date: date.value, stage: stage.value, title: title.value.trim(), content: content.value, weekly: weekly.checked });
-      else await post(`/api/projects/${p.id}/entries`, { date: date.value, stage: stage.value, title: title.value.trim(), content: content.value, review_status: review.checked ? "requested" : "none", weekly: weekly.checked });
-      toast(e ? "수정했습니다" : "기록을 저장했습니다");
+      if (e) {
+        await patch(`/api/entries/${e.id}`, { date: date.value, stage: stage.value, title: title.value.trim(), content: content.value, weekly: weekly.checked });
+        toast("수정했습니다");
+      } else {
+        const en = await post(`/api/projects/${p.id}/entries`, { date: date.value, stage: stage.value, title: title.value.trim(), content: content.value, review_status: review.checked ? "requested" : "none", weekly: weekly.checked });
+        let failed = 0;
+        for (const f of pending) {
+          try { const fd = new FormData(); fd.append("file", f.file); fd.append("filename", f.name); fd.append("caption", baseName(f.name)); await uploadFile(`/api/entries/${en.id}/attachments`, fd); }
+          catch (ex) { failed++; console.warn("attachment upload failed", f.name, ex); }
+        }
+        if (failed) toast(`기록은 저장됐지만 그림 ${failed}장을 올리지 못했습니다. [수정]에서 다시 첨부하세요`, true);
+        else toast(pending.length ? `기록과 그림 ${pending.length}장을 저장했습니다` : "기록을 저장했습니다");
+      }
       current.tab = "timeline";
       reload(container);
     } }],

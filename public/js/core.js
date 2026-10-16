@@ -154,6 +154,7 @@ export const ACTION_LABEL = {
   "evaluation.create": "평가 작성", "evaluation.update": "평가 수정", "evaluation.delete": "평가 삭제", "evaluation.respond": "평가 답변",
   "viewer.login": "핀 열람 시작", "signup.reissue": "수령 코드 재발급", "signup.reissue_request": "토큰 재발급 요청", "signup.reissue_approve": "토큰 재발급 승인", "token.reissue": "본인 토큰 재발급", "admin.locks_clear": "잠금 해제",
   "notice.create": "공지 게시", "notice.update": "공지 수정", "notice.archive": "공지 내림", "notice.restore": "공지 복원",
+  "attachment.create": "그림 첨부", "attachment.delete": "첨부 삭제", "submission.create": "보고서 제출", "submission.delete": "제출물 삭제",
 };
 /** 트랙 정의 {paper:{label,noun,stages[],rubric[]}, capstone:{...}} */
 export function tracks() { return state.me?.tracks || {}; }
@@ -175,10 +176,20 @@ export function pill(text, cls = "") { return h("span.pill" + (cls ? "." + cls.s
 export function avatar(name, lg = false) { const t = initials(name); return h("span.avatar" + (lg ? ".lg" : "") + (t.length >= 3 ? ".n3" : ""), { title: name }, t); }
 
 // ---------- 마크다운 (서버 렌더러와 동일 규칙) ----------
+/** 이미지 태그. 첨부(/files/att_…)는 인증이 필요하므로 data-src 로 두고 hydrateImages() 가 채운다 */
+function imgTag(alt, src) {
+  src = String(src).trim();
+  if (/^\/files\/att_[a-z0-9]+$/.test(src)) return `<img class="att" data-src="${src}" alt="${alt}" title="${alt}">`;
+  if (/^https?:\/\/[^\s"'<>]+$/.test(src)) return `<img src="${src}" alt="${alt}" loading="lazy" referrerpolicy="no-referrer">`;
+  if (/^blob:/.test(src)) return `<img class="att" src="${src}" alt="${alt}">`; // 편집기 미리보기(업로드 전 로컬 파일)
+  return null;
+}
 function inline(s) {
   // 코드 스팬은 먼저 떼어내 강조/링크 치환의 영향을 받지 않게 한다
   const codes = [];
   let t = esc(s).replace(/`([^`]+)`/g, (_m, c) => { codes.push(`<code>${c}</code>`); return ` ${codes.length - 1} `; });
+  // 이미지 ![alt](src): 첨부(/files/att_…)는 data-src 로 두고 hydrateImages 가 토큰을 붙여 불러온다. 외부 https 는 그대로
+  t = t.replace(/!\[([^\]]*)\]\(([^)\s]+)\)/g, (m, alt, src) => { const tag = imgTag(alt, src); if (!tag) return m; codes.push(tag); return ` ${codes.length - 1} `; });
   t = t.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
   t = t.replace(/(^|[^*])\*([^*\n]+)\*/g, "$1<em>$2</em>");
   t = t.replace(/~~([^~]+)~~/g, "<del>$1</del>");
@@ -203,6 +214,8 @@ export function md(src) {
       out.push("<table><thead><tr>" + header.map((c) => `<th>${inline(c)}</th>`).join("") + "</tr></thead><tbody>" + rows.map((r) => "<tr>" + r.map((c) => `<td>${inline(c)}</td>`).join("") + "</tr>").join("") + "</tbody></table>");
       continue;
     }
+    const fig = line.match(/^\s*!\[([^\]]*)\]\(([^)\s]+)\)\s*$/);
+    if (fig) { const tag = imgTag(esc(fig[1]), fig[2]); if (tag) { close(); out.push(`<figure class="att">${tag}${fig[1].trim() ? `<figcaption>${esc(fig[1])}</figcaption>` : ""}</figure>`); i++; continue; } }
     const hd = line.match(/^(#{1,6})\s+(.*)$/);
     if (hd) { close(); const lvl = Math.min(6, hd[1].length + 2); out.push(`<h${lvl}>${inline(hd[2])}</h${lvl}>`); i++; continue; }
     if (/^\s*(-{3,}|\*{3,})\s*$/.test(line)) { close(); out.push("<hr>"); i++; continue; }
@@ -220,13 +233,47 @@ export function md(src) {
     if (!line.trim()) { close(); i++; continue; }
     close();
     const buf = [line]; i++;
-    while (i < lines.length && lines[i].trim() && !/^(#{1,6}\s|```|>|\s*[-*+]\s|\s*\d+[.)]\s|\s*\|)/.test(lines[i])) buf.push(lines[i++]);
+    while (i < lines.length && lines[i].trim() && !/^(#{1,6}\s|```|>|\s*[-*+]\s|\s*\d+[.)]\s|\s*\||\s*!\[[^\]]*\]\([^)\s]+\)\s*$)/.test(lines[i])) buf.push(lines[i++]);
     out.push(`<p>${buf.map(inline).join("<br>")}</p>`);
   }
   close();
   return out.join("\n");
 }
-export function mdEl(src, cls = "md") { return h("div." + cls, { html: md(src) }); }
+export function mdEl(src, cls = "md") { const el = h("div." + cls, { html: md(src) }); hydrateImages(el); return el; }
+
+/** 첨부 이미지(/files/<id>)는 <img src> 로 토큰을 보낼 수 없으므로 fetch(Authorization) → blob URL 로 채운다. 한 번 받은 것은 세션 동안 재사용 */
+const imgBlobCache = new Map();
+export function hydrateImages(root) {
+  for (const img of root.querySelectorAll("img[data-src]")) {
+    const src = img.dataset.src;
+    delete img.dataset.src;
+    img.addEventListener("click", () => { if (img.src && !img.classList.contains("broken")) window.open(img.src, "_blank"); });
+    const cached = imgBlobCache.get(src);
+    if (cached) { img.src = cached; continue; }
+    img.classList.add("loading");
+    api("GET", src, undefined, { raw: true })
+      .then(async (r) => {
+        if (!r.ok) { let m = `HTTP ${r.status}`; try { m = (await r.json()).message || m; } catch {} throw new Error(m); }
+        const url = URL.createObjectURL(await r.blob());
+        imgBlobCache.set(src, url);
+        img.src = url;
+        img.classList.remove("loading");
+      })
+      .catch((e) => { img.classList.remove("loading"); img.classList.add("broken"); img.alt = `${img.alt || "그림"} — 불러올 수 없음 (${e.message})`; img.title = img.alt; });
+  }
+}
+/** 첨부가 지워졌을 때 캐시도 비운다 */
+export function forgetImage(src) { const u = imgBlobCache.get(src); if (u) { URL.revokeObjectURL(u); imgBlobCache.delete(src); } }
+/** 파일 업로드 (multipart). 응답 JSON 반환, 실패 시 ApiError */
+export async function uploadFile(path, formData) {
+  const headers = { "X-Client": "web" };
+  const tok = getToken();
+  if (tok) headers.Authorization = `Bearer ${tok}`;
+  const r = await fetch(path, { method: "POST", headers, body: formData });
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new ApiError(r.status, data.error || "error", data.message || `HTTP ${r.status}`);
+  return data;
+}
 
 // ---------- 토스트 / 모달 ----------
 let toastTimer;

@@ -6,6 +6,7 @@ import { newId } from "../lib/id";
 import { nowIso, todayIn } from "../lib/time";
 import { categoryRole, requireCategoryMember, canReview } from "../lib/auth";
 import { getEntry, getProject, getProjectForRead, isCollaborator, logActivity, touchProject, type EntryRow } from "../lib/db";
+import { removeAllForEntry } from "./attachments";
 
 export interface EntryFull extends EntryRow {
   author_name: string;
@@ -255,6 +256,8 @@ export async function deleteEntry(env: Env, ctx: AuthContext, id: string): Promi
   const e = await getEntry(env, id);
   const p = await getProject(env, e.project_id);
   if (!(ctx.isAdmin || (e.author_id === ctx.user.id && categoryRole(ctx, p.category_id)))) forbidden("기록은 작성자·관리자만 삭제할 수 있습니다");
+  // 첨부 이미지(R2/KV 객체)도 함께 정리
+  await removeAllForEntry(env, id);
   await env.DB.prepare(`DELETE FROM entries WHERE id = ?`).bind(id).run();
   await touchProject(env, e.project_id);
   await logActivity(env, { actor_id: ctx.user.id, category_id: p.category_id, project_id: e.project_id, action: "entry.delete", target_id: id, summary: e.title, source: ctx.source });

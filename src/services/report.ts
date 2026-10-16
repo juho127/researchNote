@@ -2,6 +2,7 @@ import type { AuthContext, Env, Stage } from "../env";
 import { rubricOf, rubricMax, STAGE_LABELS, STAGE_HINTS, stageIds, trackOf } from "../env";
 import { requireCategoryMember } from "../lib/auth";
 import { escapeHtml, renderMarkdown } from "../lib/markdown";
+import { fileUrlSigner } from "../lib/files";
 import { isDateStr, bad } from "../lib/http";
 import { getProjectDetail, listProjects, type ProjectDetail } from "./projects";
 import { listEntries, type EntryFull, type CommentRow } from "./entries";
@@ -188,6 +189,8 @@ h5,h6{font-size:14px;margin:12px 0 2px}
 .md table{border-collapse:collapse;margin:8px 0;font-size:13px}.md th,.md td{border:1px solid var(--rule);padding:4px 8px}.md th{background:var(--wash)}
 .md blockquote{border-left:3px solid var(--mint);margin:8px 0;padding:2px 12px;color:#3C4E57}
 .md li.task{list-style:none;margin-left:-18px}.md li.task.done{color:var(--muted);text-decoration:line-through}
+.md img{max-width:100%;height:auto}
+.md figure.att{margin:10px 0;text-align:center;break-inside:avoid}.md figure.att img{max-height:600px;border:1px solid var(--rule);border-radius:8px;background:#fff}.md figure.att figcaption{font-size:12px;color:var(--muted);margin-top:4px}
 .tasks li{margin:2px 0}.tasks .done{color:var(--muted);text-decoration:line-through}
 .foot{margin-top:50px;padding-top:16px;border-top:1px solid var(--rule);font-size:12px;color:var(--muted)}
 .proj{background:var(--card);border:1px solid var(--rule);border-radius:12px;padding:14px 18px;margin:12px 0}
@@ -209,7 +212,8 @@ function htmlShell(title: string, body: string, env: Env): string {
 </div></body></html>`;
 }
 
-export function projectReportHtml(d: ProjectReportData, env: Env): string {
+export function projectReportHtml(d: ProjectReportData, env: Env, img?: (src: string) => string): string {
+  const mo = { image: img };
   const tz = env.APP_TZ || "Asia/Seoul";
   const p = d.project;
   const H: string[] = [];
@@ -225,11 +229,11 @@ export function projectReportHtml(d: ProjectReportData, env: Env): string {
     <div><b>생성</b> ${fmtDateTime(p.created_at, tz)}</div>
     <div><b>보고서</b> ${fmtDateTime(d.generated_at, tz)}${d.from || d.to ? ` · 기간 ${d.from ?? "처음"} ~ ${d.to ?? "현재"}` : ""}</div>
   </div>`);
-  if (p.summary) H.push(`<h2>연구 요약</h2><div class="summary md">${renderMarkdown(p.summary)}</div>`);
+  if (p.summary) H.push(`<h2>연구 요약</h2><div class="summary md">${renderMarkdown(p.summary, mo)}</div>`);
   H.push(`<h2>단계별 정리 (논문 흐름)</h2>`);
   for (const s of p.stages) {
     H.push(`<div class="stage"><h3>${STAGE_LABELS[s.stage as Stage]} <span class="pill ${s.status}">${STAGE_STATUS_LABEL[s.status] ?? s.status}</span>${s.entry_count ? `<span class="pill">기록 ${s.entry_count}</span>` : ""}</h3>
-      <div class="md">${s.summary?.trim() ? renderMarkdown(s.summary) : `<p class="empty">아직 정리되지 않음 · ${STAGE_HINTS[s.stage as Stage]}</p>`}</div></div>`);
+      <div class="md">${s.summary?.trim() ? renderMarkdown(s.summary, mo) : `<p class="empty">아직 정리되지 않음 · ${STAGE_HINTS[s.stage as Stage]}</p>`}</div></div>`);
   }
   if (d.evaluations.length) {
     H.push(`<h2>평가·피드백 (평가자 → 팀 답변)</h2>`);
@@ -241,8 +245,8 @@ export function projectReportHtml(d: ProjectReportData, env: Env): string {
       H.push(`<div class="stage"><h3>${escapeHtml(ev.title)} <span class="pill">${escapeHtml(STAGE_LABELS[ev.stage] ?? ev.stage)}</span>${ev.total !== null ? `<span class="pill appr">${ev.total}/${max}</span>` : ""}</h3>
         <div class="tiny" style="color:var(--muted)">${escapeHtml(ev.evaluator_name)} · ${fmtDateTime(ev.created_at, tz)}</div>
         ${Object.keys(sc).length ? `<table class="md"><thead><tr>${rubric.filter((a) => sc[a.id] !== undefined).map((a) => `<th>${escapeHtml(a.label)}</th>`).join("")}</tr></thead><tbody><tr>${rubric.filter((a) => sc[a.id] !== undefined).map((a) => `<td>${sc[a.id]}/${a.max}</td>`).join("")}</tr></tbody></table>` : ""}
-        <div class="md">${renderMarkdown(ev.feedback)}</div>
-        ${ev.response ? `<div class="comments"><b>팀 답변</b> <span style="color:var(--muted)">${escapeHtml(ev.response_by_name ?? "")} · ${fmtDateTime(ev.response_at, tz)}</span><div class="md">${renderMarkdown(ev.response)}</div></div>` : ""}
+        <div class="md">${renderMarkdown(ev.feedback, mo)}</div>
+        ${ev.response ? `<div class="comments"><b>팀 답변</b> <span style="color:var(--muted)">${escapeHtml(ev.response_by_name ?? "")} · ${fmtDateTime(ev.response_at, tz)}</span><div class="md">${renderMarkdown(ev.response, mo)}</div></div>` : ""}
       </div>`);
     }
   }
@@ -262,11 +266,11 @@ export function projectReportHtml(d: ProjectReportData, env: Env): string {
     const rv = e.review_status;
     H.push(`<div class="entry"><h4>${escapeHtml(e.title)}</h4>
       <div class="flags"><span class="pill">${STAGE_LABELS[e.stage as Stage]}</span><span>${escapeHtml(e.author_name)}</span>${e.source === "mcp" ? `<span class="pill ai">AI 기록</span>` : ""}${rv === "requested" ? `<span class="pill req">검토 요청</span>` : rv === "approved" ? `<span class="pill appr">승인</span>` : rv === "changes_requested" ? `<span class="pill chg">수정 요청</span>` : ""}</div>
-      <div class="body md">${e.content?.trim() ? renderMarkdown(e.content) : ""}</div>`);
+      <div class="body md">${e.content?.trim() ? renderMarkdown(e.content, mo) : ""}</div>`);
     const cs = d.comments[e.id] ?? [];
     if (cs.length) {
       H.push(`<div class="comments"><b>검토 코멘트</b>`);
-      for (const c of cs) H.push(`<div class="c"><b>${escapeHtml(c.author_name)}</b> <span class="pill ${c.kind === "approve" ? "appr" : c.kind === "request_changes" ? "chg" : ""}">${KIND_LABEL[c.kind] ?? c.kind}</span> <span style="color:var(--muted)">${fmtDateTime(c.created_at, tz)}</span><div>${renderMarkdown(c.content)}</div></div>`);
+      for (const c of cs) H.push(`<div class="c"><b>${escapeHtml(c.author_name)}</b> <span class="pill ${c.kind === "approve" ? "appr" : c.kind === "request_changes" ? "chg" : ""}">${KIND_LABEL[c.kind] ?? c.kind}</span> <span style="color:var(--muted)">${fmtDateTime(c.created_at, tz)}</span><div>${renderMarkdown(c.content, mo)}</div></div>`);
       H.push(`</div>`);
     }
     H.push(`</div>`);
@@ -279,7 +283,9 @@ export async function projectReport(env: Env, ctx: AuthContext, projectId: strin
   const d = await collectProject(env, ctx, projectId, opts);
   if (format === "json") return { type: "json" as const, data: d };
   if (format === "md" || format === "markdown") return { type: "md" as const, text: projectReportMarkdown(d, env.APP_TZ || "Asia/Seoul"), title: d.project.title };
-  return { type: "html" as const, html: projectReportHtml(d, env), title: d.project.title };
+  // 본문의 /files/<id> 그림은 서명 URL 로 바꿔 넣는다 (보고서는 새 창·PDF 로 보므로 Authorization 헤더가 없음)
+  const img = await fileUrlSigner(env, [d.project.summary, ...d.project.stages.map((s) => s.summary), ...d.entries.map((e) => e.content), ...Object.values(d.comments).flat().map((c) => c.content), ...d.evaluations.flatMap((ev) => [ev.feedback, ev.response])]);
+  return { type: "html" as const, html: projectReportHtml(d, env, img), title: d.project.title };
 }
 
 // ---------- 카테고리(팀) 보고서 ----------

@@ -10,7 +10,7 @@
     "directory": "./public",
     "binding": "ASSETS",
     "not_found_handling": "single-page-application",
-    "run_worker_first": ["/api", "/api/*", "/mcp", "/mcp/*", "/health", "/SKILL.md", "/skill", "/skill.md", "/mcp.json", "/connect", "/connect.md", "/ai", "/llms.txt"]
+    "run_worker_first": ["/api", "/api/*", "/mcp", "/mcp/*", "/files/*", "/health", "/SKILL.md", "/skill", "/skill.md", "/mcp.json", "/connect", "/connect.md", "/ai", "/llms.txt"]
   },
   // SKILL.md 를 문자열 모듈로 임포트 (src/skill.ts)
   "rules": [{ "type": "Text", "globs": ["**/*.md"], "fallthrough": true }],
@@ -22,7 +22,8 @@
       "migrations_dir": "migrations"
     }
   ],
-  // 보고서 제출 PDF 저장소: R2 우선 (업로드 제한 20 MB). KV 는 R2 바인딩이 없을 때의 폴백
+  // 파일 저장소: 보고서 제출 PDF(≤ 20 MB) + 기록 이미지 첨부(≤ 5 MB, /files/:id). R2 우선, KV 는 R2 바인딩이 없을 때의 폴백
+  // 버킷이 없으면: npx wrangler r2 bucket create research-note-files
   "r2_buckets": [
     { "binding": "FILES_R2", "bucket_name": "research-note-files" }
   ],
@@ -42,7 +43,9 @@
     // 토큰 재발급(/#/reissue): "true" 면 등록한 이름+이메일이 일치할 때 즉시 발급, "false" 면 관리자 승인 후 수령
     "REISSUE_AUTO": "true",
     // 핀 열람 세션 만료일 (YYYY-MM-DD, APP_TZ 기준 그날 자정까지). 비우거나 지난 날짜면 24시간 세션
-    "VIEWER_SESSION_UNTIL": "2026-12-31"
+    "VIEWER_SESSION_UNTIL": "2026-12-31",
+    // 기록 이미지 첨부: 계정(업로더)당 합계 한도(MB). 계정별 조정은 관리자 API 의 attachment_quota_mb
+    "ATTACHMENT_QUOTA_MB": "10"
   },
   "observability": { "enabled": true }
   // 비밀값(소스에 두지 않음):

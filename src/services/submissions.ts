@@ -14,38 +14,10 @@ import { newId } from "../lib/id";
 import { endOfDayIso, nowIso, todayIn } from "../lib/time";
 import { weekCfgOf, weekRange } from "../lib/week";
 import { getProjectForRead, isCollaborator, logActivity, touchProject, type ProjectRow } from "../lib/db";
+import { fileStore, storeKind } from "../lib/files";
 import { EVAL_SELECT, canRespond, shapeEvaluation, type EvaluationRow, type RawEvaluationRow } from "./evaluations";
 
 export const MAX_FILE_BYTES = 20 * 1024 * 1024;
-
-/** 파일 저장소 어댑터: R2 바인딩이 있으면 R2, 아니면 KV */
-interface FileStore {
-  kind: "r2" | "kv";
-  put(key: string, data: ArrayBuffer, meta: Record<string, string>): Promise<void>;
-  get(key: string): Promise<ReadableStream | null>;
-  delete(key: string): Promise<void>;
-}
-function fileStore(env: Env): FileStore {
-  if (env.FILES_R2) {
-    const r2 = env.FILES_R2;
-    return {
-      kind: "r2",
-      put: async (key, data, meta) => { await r2.put(key, data, { httpMetadata: { contentType: "application/pdf" }, customMetadata: meta }); },
-      get: async (key) => (await r2.get(key))?.body ?? null,
-      delete: async (key) => { await r2.delete(key); },
-    };
-  }
-  if (env.FILES) {
-    const kv = env.FILES;
-    return {
-      kind: "kv",
-      put: async (key, data, meta) => { await kv.put(key, data, { metadata: meta }); },
-      get: async (key) => kv.get(key, "stream"),
-      delete: async (key) => { await kv.delete(key); },
-    };
-  }
-  throw new Error("파일 저장소 바인딩(FILES_R2 또는 FILES)이 없습니다");
-}
 
 export interface SubmissionRow {
   id: string;
@@ -233,7 +205,7 @@ export async function upload(env: Env, ctx: AuthContext, request: Request, proje
   const at = nowIso();
   const key = `sub/${projectId}/${m!.id}/${id}.pdf`;
   const late = m!.due_at && at > m!.due_at ? 1 : 0;
-  await fileStore(env).put(key, await file.arrayBuffer(), { project_id: projectId, milestone: m!.id, filename, size: String(file.size), version: String(version) });
+  await fileStore(env).put(key, await file.arrayBuffer(), "application/pdf", { project_id: projectId, milestone: m!.id, filename, size: String(file.size), version: String(version) });
   await env.DB
     .prepare(`INSERT INTO submissions (id, project_id, milestone, version, filename, size, content_type, storage_key, note, late, submitted_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
     .bind(id, projectId, m!.id, version, filename, file.size, "application/pdf", key, note, late, ctx.user.id, at)
@@ -248,10 +220,10 @@ export async function fileResponse(env: Env, ctx: AuthContext, id: string, downl
   const s = await getSubmission(env, id);
   await getProjectForRead(env, ctx, s.project_id);
   if (ctx.viewer) forbidden("열람 모드에서는 제출 파일을 열 수 없습니다. 팀원·평가자 계정으로 로그인하세요");
-  const body = await fileStore(env).get(s.storage_key);
-  if (!body) notFound("파일이 저장소에 없습니다");
+  const f = await fileStore(env).get(s.storage_key);
+  if (!f) notFound("파일이 저장소에 없습니다");
   const fname = encodeURIComponent(s.filename);
-  return new Response(body, {
+  return new Response(f.body, {
     headers: {
       "Content-Type": s.content_type || "application/pdf",
       "Content-Length": String(s.size),
@@ -437,7 +409,7 @@ export async function adminList(env: Env, categoryId: string) {
     .all<AdminSubmissionRow>();
   const submissions = rs.results ?? [];
   const total_bytes = submissions.reduce((a, s) => a + (s.size || 0), 0);
-  return { enabled: milestones.length > 0, milestones, store: env.FILES_R2 ? "r2" : env.FILES ? "kv" : "none", max_bytes: MAX_FILE_BYTES, submissions, total_bytes };
+  return { enabled: milestones.length > 0, milestones, store: storeKind(env), max_bytes: MAX_FILE_BYTES, submissions, total_bytes };
 }
 
 export interface CompositeRow {
